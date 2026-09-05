@@ -36,7 +36,8 @@ npm run lint
 - Surge endpoint 路由和浏览器集中调度已接通，但 Cookie/Token 复用、H168 限流和真实
   固件下的请求负载仍未验证；`/api/live` 保留为兼容性/原子快照回退路径。
 - Internet 质量指标的稳定探测目标尚未确定；因此 `internetOnline`、Ping、Loss、
-  Jitter 在 Bridge 规范化快照中仍可能为 `null`。
+  Jitter 在未配置用户路径探测时保持 `null`。配置后这些值代表 Surge 发起的 HTTP
+  用户路径探测，不应称作 ICMP 结果。
 
 ## 提交粒度
 

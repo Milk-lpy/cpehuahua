@@ -175,7 +175,7 @@ export function DashboardPage({
         </header>
         <section className="panel empty-state dashboard-empty">
           <strong>暂无实时快照</strong>
-          <p>连接真实 H168-383 并完成后续 `/api/live` 接入后，这里才会显示指标。未验证字段不会用样例数字填充。</p>
+          <p>连接真实 H168-383 并完成 Probe/endpoint Bridge 接入后，这里才会显示指标。未验证字段不会用样例数字填充。</p>
           {liveError !== null && <p className="error-banner">{liveError}</p>}
         </section>
       </main>

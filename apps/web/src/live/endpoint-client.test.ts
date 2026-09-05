@@ -12,9 +12,19 @@ const endpoint: ProbeEndpoint = {
   evidence: "h168-reference-claimed",
 };
 
-function response(status = 200): EndpointProbeResult {
+const basicEndpoint: ProbeEndpoint = {
+  id: "device-basic-information",
+  label: "Basic",
+  path: "/api/device/basic_information",
+  intervalMs: null,
+  requiresAuth: false,
+  defaultEnabled: true,
+  evidence: "h168-reference-claimed",
+};
+
+function response(forEndpoint = endpoint): EndpointProbeResult {
   return {
-    endpoint,
+    endpoint: forEndpoint,
     status: "ok",
     requestedAt: "2026-09-05T00:00:00.000Z",
     completedAt: "2026-09-05T00:00:00.010Z",
@@ -47,14 +57,16 @@ describe("H168EndpointClient", () => {
       fetcher,
     });
 
+    await client.read(basicEndpoint);
     await client.read(endpoint);
     await client.read(endpoint);
 
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(requests[0]?.method).toBe("POST");
-    expect(requests[1]?.method).toBe("GET");
-    expect(JSON.parse(String(requests[0]?.body)).password).toBe("secret");
-    expect(requests[1]?.body).toBeUndefined();
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[1]?.method).toBe("POST");
+    expect(requests[2]?.method).toBe("GET");
+    expect(JSON.parse(String(requests[1]?.body)).password).toBe("secret");
+    expect(requests[2]?.body).toBeUndefined();
     expect(client.gateway).toBe("192.168.8.1");
   });
 
@@ -65,7 +77,7 @@ describe("H168EndpointClient", () => {
       return new Response(JSON.stringify({
       schemaVersion: 1,
       gateway: "192.168.8.1",
-      endpointResult: response(),
+      endpointResult: response(basicEndpoint),
       }), { status: 200 });
     });
     const client = new H168EndpointClient("https://bridge.example/api/live", {
@@ -74,8 +86,9 @@ describe("H168EndpointClient", () => {
       fetcher,
     });
 
+    await client.read(basicEndpoint);
     await client.read(endpoint);
-    expect(JSON.parse(String(requests[0]?.body))).toEqual({
+    expect(JSON.parse(String(requests[1]?.body))).toEqual({
       password: "secret",
       rememberSession: false,
       rememberPassword: false,

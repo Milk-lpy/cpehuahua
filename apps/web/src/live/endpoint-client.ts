@@ -57,6 +57,7 @@ export class H168EndpointClient {
   private readonly rememberSession: () => boolean;
   private readonly fetcher: typeof fetch;
   private readonly onGateway: ((gateway: string | null) => void) | undefined;
+  private deviceConfirmed = false;
   private sessionPrimed = false;
   private latestGateway: string | null = null;
 
@@ -73,9 +74,14 @@ export class H168EndpointClient {
   }
 
   async read(endpoint: ProbeEndpoint): Promise<EndpointProbeResult> {
+    if (endpoint.id !== "device-basic-information" && !this.deviceConfirmed) {
+      throw new Error("必须先通过 basic_information 确认 H168-383");
+    }
     const rememberSession = this.rememberSession();
     const password = this.getPassword();
-    const shouldSendPassword = password.length > 0 && (!rememberSession || !this.sessionPrimed);
+    const shouldSendPassword = endpoint.requiresAuth
+      && password.length > 0
+      && (!rememberSession || !this.sessionPrimed);
     let result = await this.request(endpoint, shouldSendPassword ? password : "", rememberSession);
 
     // A remembered Huawei session may expire between endpoint polls. Retry the
@@ -86,6 +92,9 @@ export class H168EndpointClient {
 
     if (endpoint.requiresAuth && result.status !== "transport-error" && rememberSession) {
       this.sessionPrimed = true;
+    }
+    if (endpoint.id === "device-basic-information") {
+      this.deviceConfirmed = result.status === "ok";
     }
     return result;
   }
@@ -120,6 +129,10 @@ export class H168EndpointClient {
           ? details.error
           : `Bridge endpoint ${endpoint.id} failed (${response.status})`,
       );
+    }
+    if (this.latestGateway !== null && this.latestGateway !== payload.gateway) {
+      this.deviceConfirmed = false;
+      this.sessionPrimed = false;
     }
     this.latestGateway = payload.gateway;
     this.onGateway?.(this.latestGateway);

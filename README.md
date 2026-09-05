@@ -18,7 +18,8 @@ Huawei / Brovi H168-383（鸿蒙智选 5G CPE Ultra 6），重点是移动场景
 - 集中 `PollingEngine`、用户路径 `NetworkQualityTracker`、独立 `EventEngine` 及其测试
 - Dashboard shell、动态 PCC/SCell/Neighbor 展示、事件时间线和 PWA 离线壳
 - 实验性的 Surge 只读 Bridge：`/api/probe` 返回脱敏诊断，`/api/endpoint/<id>` 支持
-  集中端点轮询，`/api/live` 保留单次规范化快照回退
+  集中端点轮询，`/api/network-probe` 提供可选用户路径样本，`/api/live` 保留单次规范化
+  快照回退
 
 本轮没有实现生产级全量字段支持、真实设备验证或预置的 Internet 探测目标；用户可
 显式配置低负载 HTTPS 用户路径探测。锁频、锁 PCI、锁小区、APN、重启 CPE 或其他写

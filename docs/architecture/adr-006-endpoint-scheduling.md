@@ -12,7 +12,10 @@ Signal 使用相同频率请求。
 
 ## 决策
 
-- Surge 只暴露 `/api/endpoint/<id>`、`/api/probe` 和 `/api/live` 三类专用路径。
+- Surge 只暴露 `/api/endpoint/<id>`、`/api/probe`、`/api/network-probe` 和 `/api/live`
+  四类专用路径。
+- 可选的 `/api/network-probe` 只接收用户显式提供的无凭据 HTTPS URL；Surge 丢弃
+  目标响应体，只返回成功、时间戳和延迟样本。没有配置目标时不生成网络指标。
 - endpoint id 必须来自 Bridge 内部只读 allowlist；未知 id 直接返回 404，不拼接任意
   用户输入的 H168 URL。
 - Web 由一个 `DevicePollingSession` 持有 core `PollingEngine`，按 endpoint 的

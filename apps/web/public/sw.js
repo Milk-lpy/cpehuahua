@@ -22,7 +22,13 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) {
+  const requestUrl = new URL(event.request.url);
+  if (
+    event.request.method !== "GET"
+    || requestUrl.origin !== self.location.origin
+    // Never cache a Bridge response if a deployment happens to share origin.
+    || requestUrl.pathname.startsWith("/api/")
+  ) {
     return;
   }
 

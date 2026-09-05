@@ -340,7 +340,7 @@ function App() {
           </div>
         </div>
         <p className="helper-text">
-          当前 Probe 用于完整诊断；Dashboard 通过 `/api/live` 获取单次规范化快照，浏览器不会解析 Huawei XML。
+          当前 Probe 用于完整诊断；Dashboard 通过 endpoint Bridge 获取规范化快照，浏览器不会解析 Huawei XML。
         </p>
       </section>
 
