@@ -1,0 +1,10 @@
+#!name=CPE Huahua Bridge (development)
+#!desc=Read-only local H168-383 probe bridge; live firmware compatibility remains to be verified.
+#!system=ios
+
+[Script]
+# The domain is intentionally dedicated to this bridge. Enable MITM only for it.
+cpehuahua-bridge = type=http-request,pattern=^https://cpe-bridge\.example\.com/api/(probe|live)$,requires-body=true,max-size=16384,engine=webview,script-path=bridge.js,timeout=30
+
+[MITM]
+hostname = cpe-bridge.example.com
