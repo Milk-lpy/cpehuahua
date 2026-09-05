@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CpeSnapshot } from "@cpehuahua/core";
-import { aggregationLabel, chartPoints, formatDuration, formatMetric } from "./view-model";
+import { aggregationLabel, chartPoints, eventTone, formatDuration, formatMetric } from "./view-model";
 
 function snapshot(second: number, sinrDb: number | null): CpeSnapshot {
   const cell = {
@@ -95,5 +95,12 @@ describe("dashboard view model", () => {
 
   it("formats outage duration explicitly", () => {
     expect(formatDuration(17_000)).toBe("17.0 秒");
+  });
+
+  it("assigns event tones without changing event semantics", () => {
+    expect(eventTone("INTERNET_DOWN")).toBe("danger");
+    expect(eventTone("INTERNET_UP")).toBe("success");
+    expect(eventTone("LOW_SINR")).toBe("warning");
+    expect(eventTone("BAND_CHANGED")).toBe("info");
   });
 });

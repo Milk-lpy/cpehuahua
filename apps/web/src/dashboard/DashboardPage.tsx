@@ -7,6 +7,7 @@ import {
   DASHBOARD_METRICS,
   eventDetail,
   eventLabel,
+  eventTone,
   eventTime,
   formatMetric,
   metricDefinition,
@@ -59,7 +60,7 @@ function cellName(cell: CpeCell, index: number): string {
 
 function CellCard({ cell, index }: { cell: CpeCell; index: number }) {
   return (
-    <article className="cell-card">
+    <article className={`cell-card cell-card--${cell.role}`}>
       <div className="cell-card__heading">
         <div>
           <p className="eyebrow">{cellName(cell, index)}</p>
@@ -112,6 +113,10 @@ function LineChart({ history, metric }: { history: readonly CpeSnapshot[]; metri
         </span>
       </div>
       <svg className="line-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${definition.label} trend`}>
+        {[0.25, 0.5, 0.75].map((ratio) => {
+          const gridY = top + (bottom - top) * ratio;
+          return <line key={ratio} x1={left} x2={right} y1={gridY} y2={gridY} className="chart-gridline" />;
+        })}
         <line x1={left} x2={right} y1={bottom} y2={bottom} className="chart-axis" />
         <line x1={left} x2={left} y1={top} y2={bottom} className="chart-axis" />
         {path && <path d={path} className="chart-line" fill="none" />}
@@ -174,9 +179,12 @@ export function DashboardPage({
           </div>
         </header>
         <section className="panel empty-state dashboard-empty">
-          <strong>暂无实时快照</strong>
+          <div className="empty-state__mark" aria-hidden="true">⌁</div>
+          <p className="eyebrow">Live monitor</p>
+          <strong>等待本地快照</strong>
           <p>连接真实 H168-383 并完成 Probe/endpoint Bridge 接入后，这里才会显示指标。未验证字段不会用样例数字填充。</p>
           {liveError !== null && <p className="error-banner">{liveError}</p>}
+          <button className="empty-state__action" type="button" onClick={onBackToProbe}>打开 Probe</button>
         </section>
       </main>
     );
@@ -215,8 +223,8 @@ export function DashboardPage({
       <section className="panel dashboard-overview">
         <div className="overview-heading">
           <div>
-            <p className="eyebrow">Connection</p>
-            <h2>H168-383</h2>
+            <p className="eyebrow">Live connection</p>
+            <h2>连接状态</h2>
           </div>
           <div className="status-pair">
             <span className={`state-pill state-pill--${statusClass(snapshot.connection.cellularOnline)}`}><i /> Cellular {statusText(snapshot.connection.cellularOnline)}</span>
@@ -245,6 +253,10 @@ export function DashboardPage({
       </section>
 
       <section className="panel chart-panel">
+        <div className="section-heading chart-panel__heading">
+          <div><p className="eyebrow">Live telemetry</p><h2>实时曲线</h2></div>
+          <span className="chart-window">最近 60 秒</span>
+        </div>
         <div className="metric-tabs" role="tablist" aria-label="Chart metric">
           {DASHBOARD_METRICS.map((metric) => (
             <button
@@ -322,9 +334,9 @@ export function DashboardPage({
       </section>
 
       <section className="panel">
-        <div className="section-heading"><div><p className="eyebrow">Capability</p><h2>字段证据状态</h2></div></div>
+        <div className="section-heading"><div><p className="eyebrow">Capability</p><h2>字段证据状态</h2></div><span className="section-note">不以 null 冒充 0</span></div>
         <div className="capability-grid">
-          {Object.entries(snapshot.capabilities).map(([key, value]) => <span key={key}><b>{key}</b>{capabilityText(value)}</span>)}
+          {Object.entries(snapshot.capabilities).map(([key, value]) => <span className={`capability-item capability-item--${value}`} key={key}><b>{key}</b><em>{capabilityText(value)}</em></span>)}
         </div>
       </section>
 
@@ -333,7 +345,7 @@ export function DashboardPage({
         {events.length === 0 ? <p className="muted">暂无事件；需要连续快照后才会产生变化。</p> : (
           <ol className="event-list">
             {events.slice().reverse().map((item, index) => (
-              <li key={`${item.timestamp}-${item.type}-${index}`}>
+              <li className={`event-item event-item--${eventTone(item.type)}`} key={`${item.timestamp}-${item.type}-${index}`}>
                 <time>{eventTime(item.timestamp)}</time>
                 <div><strong>{eventLabel(item.type)}</strong><span>{eventDetail(item)}</span></div>
               </li>

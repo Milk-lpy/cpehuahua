@@ -105,6 +105,21 @@ export function eventLabel(type: CpeEvent["type"]): string {
   return EVENT_LABELS[type];
 }
 
+export type EventTone = "info" | "warning" | "danger" | "success";
+
+export function eventTone(type: CpeEvent["type"]): EventTone {
+  if (type === "CELLULAR_DOWN" || type === "INTERNET_DOWN" || type === "NR_LOST" || type === "HIGH_PACKET_LOSS") {
+    return "danger";
+  }
+  if (type === "CELLULAR_UP" || type === "INTERNET_UP" || type === "NR_RESTORED") {
+    return "success";
+  }
+  if (type === "LOW_SINR") {
+    return "warning";
+  }
+  return "info";
+}
+
 export function eventTime(timestamp: string): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
