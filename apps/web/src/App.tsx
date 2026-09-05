@@ -1,9 +1,23 @@
-import { useMemo, useState } from "react";
-import type { ProbeReport } from "@cpehuahua/core";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CpeLiveReport, ProbeReport } from "@cpehuahua/core";
 import { H168_PROBE_ENDPOINTS } from "@cpehuahua/core";
+import { DashboardPage } from "./dashboard/DashboardPage";
+import { LivePollingSession } from "./live/live-session";
 import { toProbeRows } from "./probe/view-model";
 
 const DEFAULT_BRIDGE_URL = "https://cpe-bridge.example.com/api/probe";
+
+function liveBridgeUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.pathname.endsWith("/api/probe")) {
+      url.pathname = `${url.pathname.slice(0, -"/api/probe".length)}/api/live`;
+    }
+    return url.toString();
+  } catch {
+    return value.replace(/\/api\/probe$/, "/api/live");
+  }
+}
 
 interface BridgeErrorPayload {
   error?: string;
@@ -17,6 +31,19 @@ function isProbeReport(value: unknown): value is ProbeReport {
 
   const candidate = value as Partial<ProbeReport>;
   return candidate.schemaVersion === 1 && Array.isArray(candidate.endpointResults);
+}
+
+function isLiveReport(value: unknown): value is CpeLiveReport {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<CpeLiveReport>;
+  return candidate.schemaVersion === 1
+    && typeof candidate.snapshot === "object"
+    && candidate.snapshot !== null
+    && Array.isArray(candidate.history)
+    && Array.isArray(candidate.events);
 }
 
 function EndpointCard({ row }: { row: ReturnType<typeof toProbeRows>[number] }) {
@@ -82,13 +109,76 @@ function EndpointCard({ row }: { row: ReturnType<typeof toProbeRows>[number] }) 
 function App() {
   const [bridgeUrl, setBridgeUrl] = useState(DEFAULT_BRIDGE_URL);
   const [report, setReport] = useState<ProbeReport | null>(null);
+  const [liveReport, setLiveReport] = useState<CpeLiveReport | null>(null);
+  const [view, setView] = useState<"probe" | "dashboard">("probe");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveMonitoring, setLiveMonitoring] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [rememberSession, setRememberSession] = useState(true);
   const [rememberPassword, setRememberPassword] = useState(false);
+  const liveSessionRef = useRef<LivePollingSession | null>(null);
+  const livePasswordRef = useRef("");
 
   const rows = useMemo(() => (report === null ? [] : toProbeRows(report)), [report]);
+
+  useEffect(() => () => {
+    liveSessionRef.current?.stop();
+  }, []);
+
+  async function readLiveReport(): Promise<CpeLiveReport> {
+    const livePassword = livePasswordRef.current;
+    const hasPassword = livePassword.length > 0;
+    const response = await fetch(liveBridgeUrl(bridgeUrl), {
+      method: hasPassword ? "POST" : "GET",
+      headers: {
+        Accept: "application/json",
+        ...(hasPassword ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(hasPassword
+        ? {
+            body: JSON.stringify({
+              password: livePassword,
+              rememberSession,
+              rememberPassword: false,
+            }),
+          }
+        : {}),
+    });
+    const payload = (await response.json()) as unknown;
+    if (!response.ok) {
+      const details = payload as BridgeErrorPayload;
+      throw new Error(details.error ?? details.message ?? `Bridge HTTP ${response.status}`);
+    }
+    if (!isLiveReport(payload)) {
+      throw new Error("Bridge /api/live 返回的不是 CpeLiveReport");
+    }
+    return payload;
+  }
+
+  function toggleLiveMonitoring() {
+    if (liveSessionRef.current !== null) {
+      liveSessionRef.current.stop();
+      liveSessionRef.current = null;
+      setLiveMonitoring(false);
+      return;
+    }
+    setLiveError(null);
+    const session = new LivePollingSession(readLiveReport, {
+      onUpdate: (update) => {
+        setLiveReport(update);
+        setLiveMonitoring(true);
+        setView("dashboard");
+      },
+      onError: (cause) => {
+        setLiveError(cause instanceof Error ? cause.message : "实时 Bridge 读取失败");
+      },
+    });
+    liveSessionRef.current = session;
+    setLiveMonitoring(true);
+    session.start();
+  }
 
   async function loadProbe() {
     setLoading(true);
@@ -96,6 +186,9 @@ function App() {
 
     try {
       const hasPassword = password.trim().length > 0;
+      if (hasPassword) {
+        livePasswordRef.current = password;
+      }
       const response = await fetch(bridgeUrl, {
         method: hasPassword ? "POST" : "GET",
         headers: {
@@ -119,11 +212,20 @@ function App() {
         throw new Error(details.error ?? details.message ?? `Bridge HTTP ${response.status}`);
       }
 
+      if (isLiveReport(payload)) {
+        setLiveReport(payload);
+        setReport(null);
+        setView("dashboard");
+        return;
+      }
+
       if (!isProbeReport(payload)) {
         throw new Error("Bridge 返回的不是 ProbeReport");
       }
 
       setReport(payload);
+      setLiveReport(null);
+      setView("probe");
       if (!rememberPassword) {
         setPassword("");
       }
@@ -133,6 +235,20 @@ function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (view === "dashboard") {
+    return (
+      <DashboardPage
+        snapshot={liveReport?.snapshot ?? null}
+        history={liveReport?.history ?? []}
+        events={liveReport?.events ?? []}
+        liveMonitoring={liveMonitoring}
+        liveError={liveError}
+        onToggleLive={toggleLiveMonitoring}
+        onBackToProbe={() => setView("probe")}
+      />
+    );
   }
 
   return (
@@ -145,7 +261,10 @@ function App() {
             先看真实设备返回什么。这里不直接请求 H168，也不把未验证字段伪装成支持。
           </p>
         </div>
-        <span className="stage-badge">Probe skeleton</span>
+        <div className="header-actions">
+          <span className="stage-badge">Probe skeleton</span>
+          <button className="secondary-button" type="button" onClick={() => setView("dashboard")}>Dashboard</button>
+        </div>
       </header>
 
       <section className="panel connection-panel">
@@ -174,7 +293,10 @@ function App() {
           id="cpe-password"
           type="password"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            livePasswordRef.current = event.target.value;
+          }}
           autoComplete="current-password"
           placeholder="不写入 URL"
         />
@@ -211,7 +333,7 @@ function App() {
           </div>
         </div>
         <p className="helper-text">
-          Phase 4 才接入自动网关发现、登录和 Session 刷新；本阶段不会在浏览器内处理 Huawei XML。
+          当前 Probe 用于完整诊断；Dashboard 通过 `/api/live` 获取单次规范化快照，浏览器不会解析 Huawei XML。
         </p>
       </section>
 

@@ -637,6 +637,269 @@ function transportResult(endpointDefinition, requestedAt, started, message) {
   };
 }
 
+function rawResult(results, id) {
+  const result = results.find((item) => item.endpoint.id === id);
+  return result && result.status === "ok" ? result.rawXml : null;
+}
+
+function numericText(value) {
+  const text = value === null || value === undefined ? null : String(value).trim();
+  if (!text || !/^[-+]?\d+(?:\.\d+)?(?:\s*[a-zA-Z%]+)?$/.test(text)) return null;
+  const match = text.replace(/,/g, "").match(/[-+]?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function xmlNumber(rawXml, names) {
+  return numericText(xmlText(rawXml, names));
+}
+
+function xmlBoolean(rawXml, names) {
+  const value = xmlText(rawXml, names)?.toLowerCase();
+  if (!value) return null;
+  if (["online", "connected", "up", "registered", "connectedstate"].includes(value)) return true;
+  if (["offline", "disconnected", "down", "unregistered"].includes(value)) return false;
+  return null;
+}
+
+function emptyRadio() {
+  return {
+    rsrpDbm: null,
+    rsrqDb: null,
+    sinrDb: null,
+    rssiDbm: null,
+    pci: null,
+    cellId: null,
+    tac: null,
+    band: null,
+    arfcn: null,
+    cqi: null,
+    mimoRank: null,
+    dlMcs: null,
+    ulMcs: null,
+    blerPct: null,
+    txPowerDbm: null,
+  };
+}
+
+function metricSet(rawXml, nr, genericNrKeys) {
+  const pciNames = nr ? (genericNrKeys ? ["nrpci", "pci"] : ["nrpci"]) : ["pci"];
+  const cellIdNames = nr
+    ? (genericNrKeys ? ["nrcellid", "cell_id", "nrcell_id"] : ["nrcellid", "nrcell_id"])
+    : ["cell_id", "cellid"];
+  const bandNames = nr
+    ? (genericNrKeys ? ["nrband", "bandInfo", "band"] : ["nrband", "bandInfo"])
+    : ["band", "bandInfo"];
+  const arfcnNames = nr
+    ? (genericNrKeys ? ["nrearfcn", "nrarfcn", "earfcn"] : ["nrearfcn", "nrarfcn"])
+    : ["earfcn", "arfcn"];
+  return {
+    rsrpDbm: xmlNumber(rawXml, [nr ? "nrrsrp" : "rsrp"]),
+    rsrqDb: xmlNumber(rawXml, [nr ? "nrrsrq" : "rsrq"]),
+    sinrDb: xmlNumber(rawXml, [nr ? "nrsinr" : "sinr"]),
+    rssiDbm: xmlNumber(rawXml, [nr ? "nrrssi" : "rssi"]),
+    pci: xmlNumber(rawXml, pciNames),
+    cellId: xmlText(rawXml, cellIdNames),
+    tac: xmlText(rawXml, [nr ? "nrtac" : "tac"]),
+    band: xmlText(rawXml, bandNames),
+    arfcn: xmlNumber(rawXml, arfcnNames),
+    cqi: xmlNumber(rawXml, [nr ? "nrcqi0" : "cqi0", nr ? "nrcqi" : "cqi"]),
+    mimoRank: xmlNumber(rawXml, [nr ? "nrrank" : "rank", nr ? "nrmimorank" : "mimorank"]),
+    dlMcs: xmlNumber(rawXml, [nr ? "nrdlmcs" : "dl_mcs", nr ? "nrdlmcs" : "dlmcs"]),
+    ulMcs: xmlNumber(rawXml, [nr ? "nrulmcs" : "ul_mcs", nr ? "nrumcs" : "ulmcs"]),
+    blerPct: xmlNumber(rawXml, [nr ? "nrbler" : "bler"]),
+    txPowerDbm: xmlNumber(rawXml, [nr ? "nrtxpower" : "txpower"]),
+  };
+}
+
+function hasCellData(cell) {
+  return Object.values(cell).some((value) => value !== null);
+}
+
+function makeCell(role, technology, metrics) {
+  return { role, technology, ...metrics };
+}
+
+function cellList(raw, technology, role, hasBandwidth) {
+  if (!raw) return [];
+  return String(raw).split(";")
+    .map((item) => item.split(",").map((part) => part.trim()))
+    .filter((parts) => parts.some(Boolean))
+    .map((parts) => {
+      const offset = hasBandwidth ? 1 : 0;
+      const value = (index) => parts[index + offset] || null;
+      return makeCell(role, technology, {
+        rsrpDbm: numericText(value(3)),
+        rsrqDb: numericText(value(4)),
+        sinrDb: numericText(value(6)),
+        rssiDbm: numericText(value(5)),
+        pci: numericText(value(2)),
+        cellId: null,
+        tac: null,
+        band: parts[1] || null,
+        arfcn: numericText(parts[0] || null),
+        cqi: null,
+        mimoRank: null,
+        dlMcs: null,
+        ulMcs: null,
+        blerPct: null,
+        txPowerDbm: null,
+      });
+    });
+}
+
+function emptyCapabilities() {
+  return {
+    signal: "unknown",
+    secondaryCells: "unknown",
+    neighbors: "unknown",
+    traffic: "unknown",
+    temperature: "unknown",
+    fan: "unknown",
+    qci: "unknown",
+    fiveQi: "unknown",
+    ambr: "unknown",
+    cpu: "unknown",
+    memory: "unknown",
+    mcs: "unknown",
+    cqi: "unknown",
+    mimoRank: "unknown",
+    bler: "unknown",
+    txPower: "unknown",
+  };
+}
+
+function markCapability(capabilities, results, endpointId, key) {
+  const result = results.find((item) => item.endpoint.id === endpointId);
+  if (!result) return;
+  if (result.status === "ok") capabilities[key] = "observed";
+  if (result.huaweiError?.code === 100002 || result.huaweiError?.code === 100003) {
+    capabilities[key] = "unsupported";
+  }
+}
+
+function radioModeFor(mode) {
+  if (mode === "101" || mode === "102" || mode === "12") return "5G";
+  if (["7", "8", "9", "10"].includes(mode)) return "4G";
+  if (["1", "2", "3"].includes(mode)) return mode === "1" ? "2G" : "3G";
+  return "unknown";
+}
+
+function saNsaFor(mode) {
+  if (mode === "101") return "NSA";
+  if (mode === "102" || mode === "12") return "SA";
+  return "unknown";
+}
+
+function rateBps(rawXml, names) {
+  const value = xmlNumber(rawXml, names);
+  // Reference documentation describes Current*Rate as bytes/s. H168 unit
+  // still needs live confirmation, so this conversion remains easy to revise.
+  return value === null ? null : value * 8;
+}
+
+function normalizeLiveSnapshot(results) {
+  const signal = rawResult(results, "device-signal");
+  const basic = rawResult(results, "device-basic-information");
+  const plmnDocument = rawResult(results, "net-current-plmn");
+  const secondary = rawResult(results, "device-seccellinfo");
+  const neighborsDocument = rawResult(results, "device-nbrcellinfo");
+  const status = rawResult(results, "monitoring-status");
+  const traffic = rawResult(results, "monitoring-traffic-statistics");
+  const mode = xmlText(signal, ["mode"]);
+  const isSa = mode === "102" || mode === "12";
+  const lte = metricSet(signal, false, false);
+  const nr = metricSet(signal, true, isSa);
+  const pcc = isSa
+    ? (hasCellData(nr) ? makeCell("pcc", "NR", nr) : null)
+    : hasCellData(lte)
+      ? makeCell("pcc", "LTE", lte)
+      : hasCellData(nr)
+        ? makeCell("pcc", "NR", nr)
+        : null;
+  const signalScells = [];
+  if (mode === "101" && hasCellData(nr)) signalScells.push(makeCell("scell", "NR", nr));
+  if (isSa && hasCellData(lte)) signalScells.push(makeCell("scell", "LTE", lte));
+  if (xmlText(signal, ["scc_pci"])) {
+    signalScells.push(makeCell("scell", "LTE", {
+      ...emptyRadio(),
+      pci: xmlNumber(signal, ["scc_pci"]),
+      band: xmlText(signal, ["scc_band"]),
+    }));
+  }
+  const scells = [
+    ...signalScells,
+    ...cellList(xmlText(secondary, ["nrseccell_list"]), "NR", "scell", true),
+    ...cellList(xmlText(secondary, ["lteseccell_list"]), "LTE", "scell", true),
+  ];
+  const neighbors = [
+    ...cellList(xmlText(neighborsDocument, ["nbrcell_nrlist"]), "NR", "neighbor", false),
+    ...cellList(xmlText(neighborsDocument, ["nbrcell_ltelist"]), "LTE", "neighbor", false),
+  ];
+  const capabilities = emptyCapabilities();
+  markCapability(capabilities, results, "device-signal", "signal");
+  markCapability(capabilities, results, "device-seccellinfo", "secondaryCells");
+  markCapability(capabilities, results, "device-nbrcellinfo", "neighbors");
+  markCapability(capabilities, results, "monitoring-traffic-statistics", "traffic");
+  if (xmlText(signal, ["nrcqi0", "nrcqi", "cqi0", "cqi"]) !== null) capabilities.cqi = "observed";
+  if (xmlText(signal, ["nrrank", "nrmimorank", "rank", "mimorank"]) !== null) capabilities.mimoRank = "observed";
+  if (xmlText(signal, ["nrdlmcs", "nrulmcs", "nrumcs", "dl_mcs", "ul_mcs", "dlmcs", "ulmcs"]) !== null) capabilities.mcs = "observed";
+  if (xmlText(signal, ["nrbler", "bler"]) !== null) capabilities.bler = "observed";
+  if (xmlText(signal, ["nrtxpower", "txpower"]) !== null) capabilities.txPower = "observed";
+  const radio = pcc ? { ...pcc } : emptyRadio();
+  if (radio.role) delete radio.role;
+  if (radio.technology) delete radio.technology;
+  return {
+    schemaVersion: 1,
+    timestamp: now(),
+    source: "live",
+    device: {
+      model: xmlText(basic, ["devicename", "DeviceName", "model", "modelname"]),
+      firmware: xmlText(basic, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"]),
+      uptimeSeconds: xmlNumber(basic, ["uptime", "UpTime", "uptimeseconds"]),
+    },
+    connection: {
+      cellularOnline: xmlBoolean(status, ["cellularonline", "connectionstatus", "cellularstatus"]),
+      internetOnline: null,
+      radioMode: radioModeFor(mode),
+      saNsa: saNsaFor(mode),
+      plmn: xmlText(signal, ["plmn"]) || xmlText(plmnDocument, ["plmn", "currentplmn", "current_plmn"]),
+    },
+    radio,
+    cells: { pcc, scells, neighbors },
+    network: {
+      pingMs: null,
+      jitterMs: null,
+      packetLossPct: null,
+      downloadBps: rateBps(traffic, ["CurrentDownloadRate", "downloadrate"]),
+      uploadBps: rateBps(traffic, ["CurrentUploadRate", "uploadrate"]),
+    },
+    extended: {
+      temperatureC: null,
+      fanRpm: null,
+      cpuUsagePct: null,
+      memoryUsagePct: null,
+      qci: null,
+      fiveQi: null,
+      dlAmbr: null,
+      ulAmbr: null,
+    },
+    capabilities,
+  };
+}
+
+function safeEndpointResult(result) {
+  return {
+    ...result,
+    // Raw data must not leave the local Bridge unredacted, even though the
+    // browser page itself is local-facing. Keep the unsanitized value only in
+    // this request's Surge memory for normalization/error handling.
+    rawXml: result.sanitizedRawXml,
+    parsed: result.parsed ? { ...result.parsed, rawXml: result.sanitizedRawXml } : null,
+  };
+}
+
 async function collectEndpoint(context, endpointDefinition) {
   const requestedAt = now();
   const started = Date.now();
@@ -750,12 +1013,26 @@ async function runProbe() {
   if (context.rememberSession || context.rememberPassword) {
     saveStoredState(context);
   }
+  const browserResults = results.map((result) => safeEndpointResult(result));
+  if ($request.url.endsWith("/api/live")) {
+    const snapshot = normalizeLiveSnapshot(results);
+    bridgeResponse(200, {
+      schemaVersion: 1,
+      generatedAt: now(),
+      adapterId: "h168",
+      gateway,
+      snapshot,
+      history: [snapshot],
+      events: [],
+    });
+    return;
+  }
   bridgeResponse(200, {
     schemaVersion: 1,
     generatedAt: now(),
     adapterId: "h168",
     gateway,
-    endpointResults: results,
+    endpointResults: browserResults,
   });
 }
 

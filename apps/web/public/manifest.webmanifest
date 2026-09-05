@@ -1,0 +1,10 @@
+{
+  "name": "CPE Huahua",
+  "short_name": "CPE Huahua",
+  "description": "Huawei / Brovi H168-383 read-only cellular monitor",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08101d",
+  "theme_color": "#0b1220",
+  "lang": "zh-CN"
+}

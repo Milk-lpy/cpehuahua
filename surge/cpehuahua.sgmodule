@@ -1,5 +1,5 @@
 #!name=CPE Huahua Bridge (development)
-#!desc=Read-only local H168-383 probe bridge; live firmware compatibility remains to be verified.
+#!desc=Read-only local H168-383 Probe/live bridge; firmware compatibility remains to be verified.
 #!system=ios
 
 [Script]
