@@ -957,6 +957,59 @@ function bridgeResponse(status, body) {
   });
 }
 
+function endpointIdFromRequest() {
+  const match = String($request.url).match(/\/api\/endpoint\/([a-z0-9-]+)$/i);
+  return match?.[1] ?? null;
+}
+
+function endpointById(id) {
+  return ENDPOINTS.find((item) => item.id === id) || null;
+}
+
+async function runEndpoint(endpointId) {
+  const gateway = gatewayAddress();
+  if (!gateway) {
+    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接 H168 Wi-Fi。" });
+    return;
+  }
+
+  const endpointDefinition = endpointById(endpointId);
+  if (!endpointDefinition) {
+    bridgeResponse(404, { error: "Unknown H168 endpoint", endpoint: endpointId });
+    return;
+  }
+
+  const context = contextFromRequest();
+  context.baseUrl = "http://" + gateway;
+  const result = await collectEndpoint(context, endpointDefinition);
+  if (context.rememberSession || context.rememberPassword) {
+    saveStoredState(context);
+  }
+
+  // The identity gate is mandatory for the first request made by an endpoint
+  // scheduler. It prevents the basic-information route from silently accepting
+  // an unrelated default gateway. Other routes remain limited to this explicit
+  // read-only allowlist and are expected to be called after that gate.
+  if (endpointDefinition.id === "device-basic-information"
+    && result.status === "ok"
+    && !looksLikeH168(result.rawXml)) {
+    bridgeResponse(422, {
+      error: "默认网关返回的数据未确认是 H168-383。",
+      gateway,
+      endpoint: endpointDefinition.id,
+      parsedFields: result.parsedFields,
+      sanitizedRawXml: result.sanitizedRawXml,
+    });
+    return;
+  }
+
+  bridgeResponse(200, {
+    schemaVersion: 1,
+    gateway,
+    endpointResult: safeEndpointResult(result),
+  });
+}
+
 async function runProbe() {
   const gateway = gatewayAddress();
   if (!gateway) {
@@ -1036,10 +1089,18 @@ async function runProbe() {
   });
 }
 
-if (($request.url.endsWith("/api/probe") || $request.url.endsWith("/api/live"))
+const endpointId = endpointIdFromRequest();
+const isProbeRoute = $request.url.endsWith("/api/probe") || $request.url.endsWith("/api/live");
+const isEndpointRoute = endpointId !== null;
+
+if ((isProbeRoute || isEndpointRoute)
   && String($request.method).toUpperCase() === "OPTIONS") {
   bridgeResponse(204, {});
-} else if ($request.url.endsWith("/api/probe") || $request.url.endsWith("/api/live")) {
+} else if (isEndpointRoute) {
+  runEndpoint(endpointId).catch((error) => {
+    bridgeResponse(500, { error: error instanceof Error ? error.message : "Bridge endpoint failed" });
+  });
+} else if (isProbeRoute) {
   runProbe().catch((error) => {
     bridgeResponse(500, { error: error instanceof Error ? error.message : "Bridge failed" });
   });

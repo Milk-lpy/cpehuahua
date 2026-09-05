@@ -2,22 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CpeLiveReport, ProbeReport } from "@cpehuahua/core";
 import { H168_PROBE_ENDPOINTS } from "@cpehuahua/core";
 import { DashboardPage } from "./dashboard/DashboardPage";
-import { LivePollingSession } from "./live/live-session";
+import { H168EndpointClient } from "./live/endpoint-client";
+import { DevicePollingSession } from "./live/device-session";
+import {
+  clearPersistedLiveReport,
+  loadPersistedLiveReport,
+  savePersistedLiveReport,
+} from "./live/storage";
 import { toProbeRows } from "./probe/view-model";
 
 const DEFAULT_BRIDGE_URL = "https://cpe-bridge.example.com/api/probe";
-
-function liveBridgeUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    if (url.pathname.endsWith("/api/probe")) {
-      url.pathname = `${url.pathname.slice(0, -"/api/probe".length)}/api/live`;
-    }
-    return url.toString();
-  } catch {
-    return value.replace(/\/api\/probe$/, "/api/live");
-  }
-}
 
 interface BridgeErrorPayload {
   error?: string;
@@ -109,7 +103,8 @@ function EndpointCard({ row }: { row: ReturnType<typeof toProbeRows>[number] }) 
 function App() {
   const [bridgeUrl, setBridgeUrl] = useState(DEFAULT_BRIDGE_URL);
   const [report, setReport] = useState<ProbeReport | null>(null);
-  const [liveReport, setLiveReport] = useState<CpeLiveReport | null>(null);
+  const [liveReport, setLiveReport] = useState<CpeLiveReport | null>(() => loadPersistedLiveReport());
+  const [restoredFromStorage, setRestoredFromStorage] = useState(() => liveReport !== null);
   const [view, setView] = useState<"probe" | "dashboard">("probe");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +113,7 @@ function App() {
   const [password, setPassword] = useState("");
   const [rememberSession, setRememberSession] = useState(true);
   const [rememberPassword, setRememberPassword] = useState(false);
-  const liveSessionRef = useRef<LivePollingSession | null>(null);
+  const liveSessionRef = useRef<DevicePollingSession | null>(null);
   const livePasswordRef = useRef("");
 
   const rows = useMemo(() => (report === null ? [] : toProbeRows(report)), [report]);
@@ -126,36 +121,6 @@ function App() {
   useEffect(() => () => {
     liveSessionRef.current?.stop();
   }, []);
-
-  async function readLiveReport(): Promise<CpeLiveReport> {
-    const livePassword = livePasswordRef.current;
-    const hasPassword = livePassword.length > 0;
-    const response = await fetch(liveBridgeUrl(bridgeUrl), {
-      method: hasPassword ? "POST" : "GET",
-      headers: {
-        Accept: "application/json",
-        ...(hasPassword ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(hasPassword
-        ? {
-            body: JSON.stringify({
-              password: livePassword,
-              rememberSession,
-              rememberPassword: false,
-            }),
-          }
-        : {}),
-    });
-    const payload = (await response.json()) as unknown;
-    if (!response.ok) {
-      const details = payload as BridgeErrorPayload;
-      throw new Error(details.error ?? details.message ?? `Bridge HTTP ${response.status}`);
-    }
-    if (!isLiveReport(payload)) {
-      throw new Error("Bridge /api/live 返回的不是 CpeLiveReport");
-    }
-    return payload;
-  }
 
   function toggleLiveMonitoring() {
     if (liveSessionRef.current !== null) {
@@ -165,9 +130,16 @@ function App() {
       return;
     }
     setLiveError(null);
-    const session = new LivePollingSession(readLiveReport, {
+    const client = new H168EndpointClient(bridgeUrl, {
+      getPassword: () => livePasswordRef.current,
+      rememberSession: () => rememberSession,
+    });
+    const session = new DevicePollingSession(client.read.bind(client), {
+      getGateway: () => client.gateway,
       onUpdate: (update) => {
         setLiveReport(update);
+        setRestoredFromStorage(false);
+        savePersistedLiveReport(update);
         setLiveMonitoring(true);
         setView("dashboard");
       },
@@ -214,6 +186,8 @@ function App() {
 
       if (isLiveReport(payload)) {
         setLiveReport(payload);
+        setRestoredFromStorage(false);
+        savePersistedLiveReport(payload);
         setReport(null);
         setView("dashboard");
         return;
@@ -225,6 +199,7 @@ function App() {
 
       setReport(payload);
       setLiveReport(null);
+      setRestoredFromStorage(false);
       setView("probe");
       if (!rememberPassword) {
         setPassword("");
@@ -237,16 +212,24 @@ function App() {
     }
   }
 
+  function clearCachedLiveReport() {
+    clearPersistedLiveReport();
+    setLiveReport(null);
+    setRestoredFromStorage(false);
+  }
+
   if (view === "dashboard") {
     return (
       <DashboardPage
         snapshot={liveReport?.snapshot ?? null}
         history={liveReport?.history ?? []}
         events={liveReport?.events ?? []}
+        cached={restoredFromStorage}
         liveMonitoring={liveMonitoring}
         liveError={liveError}
         onToggleLive={toggleLiveMonitoring}
         onBackToProbe={() => setView("probe")}
+        onClearCache={clearCachedLiveReport}
       />
     );
   }

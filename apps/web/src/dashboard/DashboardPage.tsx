@@ -20,10 +20,12 @@ interface DashboardPageProps {
   snapshot: CpeSnapshot | null;
   history: readonly CpeSnapshot[];
   events: readonly CpeEvent[];
+  cached: boolean;
   liveMonitoring: boolean;
   liveError: string | null;
   onToggleLive: () => void;
   onBackToProbe: () => void;
+  onClearCache: () => void;
 }
 
 function Value({ value, unit = "" }: { value: number | string | null; unit: string }) {
@@ -131,10 +133,12 @@ export function DashboardPage({
   snapshot,
   history,
   events,
+  cached,
   liveMonitoring,
   liveError,
   onToggleLive,
   onBackToProbe,
+  onClearCache,
 }: DashboardPageProps) {
   const [selectedMetric, setSelectedMetric] = useState<DashboardMetricId>("rsrpDbm");
 
@@ -165,6 +169,7 @@ export function DashboardPage({
           </div>
           <div className="header-actions">
             <button className="secondary-button" type="button" onClick={onToggleLive}>{liveMonitoring ? "停止实时" : "启动实时"}</button>
+            {cached && <button className="secondary-button" type="button" onClick={onClearCache}>清除缓存</button>}
             <button className="secondary-button" type="button" onClick={onBackToProbe}>返回 Probe</button>
           </div>
         </header>
@@ -190,6 +195,7 @@ export function DashboardPage({
         </div>
         <div className="header-actions">
           <button className="secondary-button" type="button" onClick={onToggleLive}>{liveMonitoring ? "停止实时" : "启动实时"}</button>
+          {cached && <button className="secondary-button" type="button" onClick={onClearCache}>清除缓存</button>}
           <button className="secondary-button" type="button" onClick={onBackToProbe}>Probe</button>
         </div>
       </header>
@@ -198,6 +204,12 @@ export function DashboardPage({
 
       {snapshot.source !== "live" && (
         <div className="evidence-banner">这是 {snapshot.source === "fixture" ? "fixture 参考数据" : "非实机数据"}，不代表 H168-383 已被验证。</div>
+      )}
+
+      {cached && (
+        <div className="evidence-banner evidence-banner--cached">
+          这是浏览器本地保存的上次规范化快照，当前尚未连接 Bridge；本地缓存不包含密码、Session、Token 或 RAW XML。
+        </div>
       )}
 
       <section className="panel dashboard-overview">
