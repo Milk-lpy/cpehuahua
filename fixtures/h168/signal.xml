@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- reference-shape fixture; not captured from H168-383 -->
+<response>
+  <mode>101</mode>
+  <plmn>46000</plmn>
+  <pci>187</pci>
+  <cell_id>fixture-lte-cell</cell_id>
+  <band>B5</band>
+  <earfcn>2525</earfcn>
+  <rsrp>-91dBm</rsrp>
+  <rsrq>-9dB</rsrq>
+  <sinr>23dB</sinr>
+  <rssi>-60dBm</rssi>
+  <cqi0>12</cqi0>
+  <nrpci>242</nrpci>
+  <nrcellid>fixture-nr-cell</nrcellid>
+  <nrband>n78</nrband>
+  <nrearfcn>643660</nrearfcn>
+  <nrrsrp>-95dBm</nrrsrp>
+  <nrrsrq>-10dB</nrrsrq>
+  <nrsinr>8dB</nrsinr>
+  <nrcqi0>15</nrcqi0>
+  <nrrank>4</nrrank>
+  <nrdlmcs>27</nrdlmcs>
+  <scc_pci>223</scc_pci>
+  <scc_band>n78</scc_band>
+  <future_unknown_key>preserve-me</future_unknown_key>
+</response>

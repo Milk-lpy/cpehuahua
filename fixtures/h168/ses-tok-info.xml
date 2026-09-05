@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- synthetic protocol fixture; all credentials/tokens are dummy values -->
+<response>
+  <SesInfo>fixture-session-1</SesInfo>
+  <TokInfo>fixture-token-1</TokInfo>
+</response>

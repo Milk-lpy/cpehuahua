@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- reference-shape fixture; not captured from H168-383 -->
+<response>
+  <mode>7</mode>
+  <plmn>46011</plmn>
+  <pci>88</pci>
+  <cell_id>fixture-lte-only</cell_id>
+  <band>B3</band>
+  <earfcn>1650</earfcn>
+  <rsrp>-101dBm</rsrp>
+  <rsrq>-14dB</rsrq>
+  <sinr>4dB</sinr>
+</response>

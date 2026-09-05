@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- reference-shape fixture; list order follows cpemanager documentation -->
+<response>
+  <nrseccell_list>643660,n78,100,242,-95dBm,-10dB,-60dBm,8dB;643700,n1,20,301,-103dBm,-12dB,-67dBm,3dB</nrseccell_list>
+  <lteseccell_list>1650,B3,20,88,-101dBm,-14dB,-70dBm,4dB</lteseccell_list>
+</response>

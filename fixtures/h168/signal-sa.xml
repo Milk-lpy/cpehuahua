@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- reference-shape fixture; not captured from H168-383 -->
+<response>
+  <mode>102</mode>
+  <plmn>46001</plmn>
+  <nrpci>242</nrpci>
+  <nrcellid>fixture-sa-cell</nrcellid>
+  <nrband>n78</nrband>
+  <nrearfcn>643660</nrearfcn>
+  <nrrsrp>-88dBm</nrrsrp>
+  <nrrsrq>-8dB</nrrsrq>
+  <nrsinr>18dB</nrsinr>
+</response>

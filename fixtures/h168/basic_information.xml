@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- reference-shape fixture; not captured from H168-383 -->
+<response>
+  <devicename>H168-383</devicename>
+  <SoftwareVersion>fixture-firmware</SoftwareVersion>
+  <UpTime>12345</UpTime>
+</response>

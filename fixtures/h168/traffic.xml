@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- reference-shape fixture; rate units still require H168 confirmation -->
+<response>
+  <CurrentDownloadRate>443457</CurrentDownloadRate>
+  <CurrentUploadRate>76419</CurrentUploadRate>
+</response>

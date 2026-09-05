@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- synthetic protocol fixture; values are not device credentials -->
+<response>
+  <salt>00112233445566778899aabbccddeeff</salt>
+  <iterations>2</iterations>
+  <servernonce>fixture-server-nonce</servernonce>
+</response>

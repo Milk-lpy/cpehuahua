@@ -1,0 +1,24 @@
+{
+  "name": "cpehuahua",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only iPhone monitor for Huawei/Brovi H168-383 5G CPE",
+  "type": "module",
+  "packageManager": "npm@11.19.0",
+  "workspaces": [
+    "apps/web",
+    "packages/core"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace @cpehuahua/core && npm run test --workspace @cpehuahua/web",
+    "typecheck": "npm run typecheck --workspace @cpehuahua/core && npm run typecheck --workspace @cpehuahua/web",
+    "lint": "npm run typecheck",
+    "build": "npm run build --workspace @cpehuahua/core && npm run build --workspace @cpehuahua/web",
+    "dev": "npm run dev --workspace @cpehuahua/web"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}
