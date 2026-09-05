@@ -57,8 +57,8 @@ raw_h168_capture_present: false
 保持 `null` 或 `unknown`：
 
 ```text
-temperatureC fanRpm qci fiveQi dlAmbr ulAmbr
-cpu memory mimoRank cqi dlMcs ulMcs bler txPower
+temperatureC fanRpm cpuUsagePct memoryUsagePct qci fiveQi dlAmbr ulAmbr
+mimoRank cqi dlMcs ulMcs bler txPower
 ```
 
 `rsrp/rsrq/sinr/rssi/pci/cellId/band/arfcn` 有通用 Huawei/5G 参考形状，Adapter

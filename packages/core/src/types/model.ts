@@ -85,6 +85,8 @@ export interface NetworkMetrics {
 export interface ExtendedMetrics {
   temperatureC: Nullable<number>;
   fanRpm: Nullable<number>;
+  cpuUsagePct: Nullable<number>;
+  memoryUsagePct: Nullable<number>;
   qci: Nullable<number>;
   fiveQi: Nullable<number>;
   dlAmbr: Nullable<number>;

@@ -62,6 +62,8 @@ describe("H168 adapter", () => {
     expect(snapshot.cells.neighbors).toHaveLength(4);
     expect(snapshot.network.downloadBps).toBe(443457 * 8);
     expect(snapshot.extended.temperatureC).toBeNull();
+    expect(snapshot.extended.cpuUsagePct).toBeNull();
+    expect(snapshot.extended.memoryUsagePct).toBeNull();
     expect(snapshot.extended.qci).toBeNull();
     expect(snapshot.capabilities.signal).toBe("unknown");
     expect(snapshot.capabilities.secondaryCells).toBe("unknown");

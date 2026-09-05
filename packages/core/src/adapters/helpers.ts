@@ -51,6 +51,8 @@ export function emptyExtendedMetrics(): ExtendedMetrics {
   return {
     temperatureC: null,
     fanRpm: null,
+    cpuUsagePct: null,
+    memoryUsagePct: null,
     qci: null,
     fiveQi: null,
     dlAmbr: null,
