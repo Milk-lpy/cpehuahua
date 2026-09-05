@@ -22,8 +22,8 @@ npm run lint
 - `packages/core/src/polling` 放集中 endpoint 调度；`packages/core/src/network` 放
   用户路径质量窗口与 Internet 迟滞；`packages/core/src/event-engine` 只消费快照。
 - `apps/web` 只消费统一结构，不直接解析 XML。
-- `apps/web/src/live` 维护 `/api/live` 的本地历史与事件；`apps/web/src/dashboard`
-  只负责展示，不自行请求 Huawei。
+- `apps/web/src/live` 维护 Bridge endpoint client、集中 `DevicePollingSession` 和本地
+  历史；`apps/web/src/dashboard` 只负责展示，不自行请求 Huawei。
 - `fixtures/h168/` 只能提交脱敏且带来源说明的 fixture。
 - 真实响应先保存在被 `.gitignore` 忽略的 `fixtures/h168/live/`，分析完再生成脱敏
   fixture；不修改、重命名或删除原始抓包。
@@ -33,8 +33,8 @@ npm run lint
 ## 当前未完成边界
 
 - H168-383 实机端点、字段、登录 Token 轮换和限流行为尚未在本仓库验证。
-- Bridge `/api/live` 当前每次返回一个完整快照；端点级 1/2/3/10 秒节流需要实机后
-  决定，不能只按 fixture 宣称完成。
+- Surge endpoint 路由和浏览器集中调度已接通，但 Cookie/Token 复用、H168 限流和真实
+  固件下的请求负载仍未验证；`/api/live` 保留为兼容性/原子快照回退路径。
 - Internet 质量指标的稳定探测目标尚未确定；因此 `internetOnline`、Ping、Loss、
   Jitter 在 Bridge 规范化快照中仍可能为 `null`。
 

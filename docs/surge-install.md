@@ -2,8 +2,9 @@
 
 当前 `surge/bridge.js` 是实验性的只读 Bridge：它会发现 IPv4 默认网关、先读取
 `basic_information` 确认 H168-383，再读取公开和认证 endpoint。`/api/probe` 返回
-脱敏 `ProbeReport`，`/api/live` 返回单次脱敏 `CpeLiveReport`。真实固件、Cookie/Token
-轮换和字段含义仍需用户设备验证；连续刷新由 PWA 的 `LivePollingSession` 负责。
+脱敏 `ProbeReport`，`/api/endpoint/<id>` 返回一个脱敏 endpoint 结果，`/api/live`
+返回单次脱敏 `CpeLiveReport`。真实固件、Cookie/Token 轮换和字段含义仍需用户设备
+验证；默认连续刷新由 PWA 的 `DevicePollingSession`/`PollingEngine` 负责。
 
 ## 安装前提
 
@@ -26,7 +27,9 @@
 4. 建议首次只勾选 `Remember Session`，保持 `Remember Password` 关闭。
 5. 点击“读取 Probe”。Bridge 在 Surge 本地依次探测 endpoint，页面展示 HTTP 状态、
    Huawei error、延迟、完整 parsed fields 和脱敏 RAW XML。进入 Dashboard 后可启动
-   当前版本的集中 live 快照轮询。
+   当前版本按 endpoint 周期运行的集中轮询。首次轮询建议保持 `Remember Session` 开启，
+   这样端点请求之间可以复用本地 Session/Cookie；关闭它时，认证端点可能需要每次重新
+   登录。
 6. 对需要反馈的 endpoint 点击 `Copy Sanitized Result`，只发送脱敏结果；不要发送
    浏览器 Network 导出、完整 Cookie、密码或未脱敏 RAW XML。
 
@@ -47,5 +50,6 @@ Bridge 的持久化状态使用 Surge 的 `$persistentStore`：`Remember Session
 本地 Session/Cookie/CSRF 状态，`Remember Password` 才保存密码；二者独立。V1 不
 使用 TCP 20249、Telnet、AT，也不会调用锁频、锁小区、APN、Wi-Fi 或重启接口。
 
-实时 1/2/3/10 秒集中轮询、Internet 侧连续 Ping/丢包判断和历史事件时间线尚未在
-本轮实现；Probe 成功后再进入这些阶段。
+实时 1/2/3/10 秒集中轮询、最近 60 个快照和事件时间线的设备无关骨架已经存在，但
+Internet 侧连续探测目标尚未确定，所以 InternetOnline、Ping、Loss、Jitter 仍可能为
+`null`。这不代表 H168 已支持这些字段。

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for the current implementation; endpoint-level runtime integration remains
+Accepted for the current implementation; endpoint-level runtime behavior remains
 subject to real H168 and Surge validation.
 
 ## Context
@@ -24,9 +24,9 @@ subject to real H168 and Surge validation.
 `intervalMs` 调度，并将最新结果交给 Adapter 生成 `CpeSnapshot`。`EventEngine` 只
 消费快照，不知道 Huawei XML、HTTP 或 Surge。
 
-当前 PWA 的 `/api/live` 是一个原子快照接口，因此由 `LivePollingSession` 以可配置
-间隔集中请求，并在浏览器本地保留最近 60 条快照；当 Surge 暴露端点级读取接口后，
-可以直接接入 core `PollingEngine`，不改变 Dashboard 或事件类型。
+当前 PWA 的默认路径是通过 `/api/endpoint/<id>` 接入 `DevicePollingSession`，由 core
+`PollingEngine` 按 endpoint 周期集中请求，并在浏览器本地保留最近 60 条快照；`/api/live`
+仍作为原子快照兼容/回退接口，不改变 Dashboard 或事件类型。
 
 ## Consequences
 
@@ -37,5 +37,5 @@ subject to real H168 and Surge validation.
 
 ## Revisit trigger
 
-实机确认 Surge 请求耗时、限流行为和 `/api/live` 的实际负载后，决定是否切换到端点
-级 Bridge 路由或加入缓存/退避；不得仅凭 fixture 调整为“已支持”。
+实机确认 Surge 请求耗时、Session 复用、限流行为和端点级实际负载后，再决定是否加入
+缓存/退避或调整周期；不得仅凭 fixture 调整为“已支持”。
