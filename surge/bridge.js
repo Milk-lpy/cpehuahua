@@ -433,8 +433,7 @@ function randomNonce() {
   return hex(bytes);
 }
 
-function contextFromRequest() {
-  const stored = parseStoredState();
+function requestPayload() {
   let payload = {};
   if (String($request.method).toUpperCase() === "POST" && $request.body) {
     try {
@@ -447,6 +446,12 @@ function contextFromRequest() {
       throw new Error("Probe request body must be JSON");
     }
   }
+  return payload;
+}
+
+function contextFromRequest() {
+  const stored = parseStoredState();
+  const payload = requestPayload();
   const payloadPassword = typeof payload.password === "string" ? payload.password : "";
   const storedPassword = typeof stored.password === "string" ? stored.password : "";
   const rememberSession = typeof payload.rememberSession === "boolean"
@@ -957,6 +962,66 @@ function bridgeResponse(status, body) {
   });
 }
 
+function networkProbeTarget() {
+  const payload = requestPayload();
+  const value = typeof payload.url === "string" ? payload.url.trim() : "";
+  if (!value) throw new Error("未提供 Internet 用户路径探测地址");
+  let target;
+  try {
+    target = new URL(value);
+  } catch {
+    throw new Error("Internet 探测地址必须是有效 HTTPS URL");
+  }
+  if (target.protocol !== "https:" || target.username || target.password) {
+    throw new Error("Internet 探测地址只允许不带凭据的 HTTPS URL");
+  }
+  return target.toString();
+}
+
+function requestNetworkTarget(target) {
+  return new Promise((resolve) => {
+    if (typeof $httpClient?.get !== "function") {
+      resolve({ status: 0, error: "Surge $httpClient.get unavailable" });
+      return;
+    }
+    $httpClient.get({
+      url: target,
+      headers: {
+        Accept: "*/*",
+        "Cache-Control": "no-cache",
+      },
+      timeout: 3,
+      "auto-cookie": false,
+    }, (error, response) => {
+      resolve({
+        status: typeof response?.status === "number" ? response.status : 0,
+        error: error ? String(error) : null,
+      });
+    });
+  });
+}
+
+async function runNetworkProbe() {
+  let target;
+  try {
+    target = networkProbeTarget();
+  } catch (error) {
+    bridgeResponse(400, { error: error instanceof Error ? error.message : "Invalid probe target" });
+    return;
+  }
+  const started = Date.now();
+  const result = await requestNetworkTarget(target);
+  const success = result.error === null && result.status >= 200 && result.status < 400;
+  bridgeResponse(200, {
+    schemaVersion: 1,
+    sample: {
+      timestamp: now(),
+      success,
+      latencyMs: success ? Date.now() - started : null,
+    },
+  });
+}
+
 function endpointIdFromRequest() {
   const match = String($request.url).match(/\/api\/endpoint\/([a-z0-9-]+)$/i);
   return match?.[1] ?? null;
@@ -1092,13 +1157,18 @@ async function runProbe() {
 const endpointId = endpointIdFromRequest();
 const isProbeRoute = $request.url.endsWith("/api/probe") || $request.url.endsWith("/api/live");
 const isEndpointRoute = endpointId !== null;
+const isNetworkProbeRoute = $request.url.endsWith("/api/network-probe");
 
-if ((isProbeRoute || isEndpointRoute)
+if ((isProbeRoute || isEndpointRoute || isNetworkProbeRoute)
   && String($request.method).toUpperCase() === "OPTIONS") {
   bridgeResponse(204, {});
 } else if (isEndpointRoute) {
   runEndpoint(endpointId).catch((error) => {
     bridgeResponse(500, { error: error instanceof Error ? error.message : "Bridge endpoint failed" });
+  });
+} else if (isNetworkProbeRoute) {
+  runNetworkProbe().catch((error) => {
+    bridgeResponse(500, { error: error instanceof Error ? error.message : "Network probe failed" });
   });
 } else if (isProbeRoute) {
   runProbe().catch((error) => {

@@ -1,12 +1,15 @@
 import {
   EventEngine,
   H168Adapter,
+  NetworkQualityTracker,
   PollingEngine,
   type CpeAdapter,
   type CpeEvent,
   type CpeLiveReport,
   type CpeSnapshot,
   type EndpointProbeResult,
+  type NetworkProbeSample,
+  type NetworkQualityUpdate,
   type ProbeEndpoint,
 } from "@cpehuahua/core";
 
@@ -17,6 +20,8 @@ export interface DevicePollingOptions {
   getGateway?: () => string | null;
   historySize?: number;
   eventEngine?: EventEngine;
+  networkQuality?: NetworkQualityTracker;
+  networkProbe?: () => Promise<NetworkProbeSample>;
   now?: () => number;
   setTimeout?: (handler: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearTimeout?: (handle: ReturnType<typeof setTimeout>) => void;
@@ -35,17 +40,25 @@ export class DevicePollingSession {
   private readonly adapter: CpeAdapter;
   private readonly historySize: number;
   private readonly eventEngine: EventEngine;
+  private readonly networkQuality: NetworkQualityTracker;
+  private readonly networkProbe: (() => Promise<NetworkProbeSample>) | undefined;
   private readonly getGateway: () => string | null;
   private readonly onUpdate: ((report: CpeLiveReport) => void) | undefined;
   private readonly onError: ((error: unknown) => void) | undefined;
   private readonly history: CpeSnapshot[] = [];
   private readonly engine: PollingEngine;
+  private networkProbeInFlight: Promise<void> | null = null;
+  private latestNetworkUpdate: NetworkQualityUpdate | null = null;
+  private networkProbeErrorReported = false;
+  private sessionGeneration = 0;
   private latest: CpeLiveReport | null = null;
 
   constructor(read: EndpointReader, options: DevicePollingOptions = {}) {
     this.adapter = options.adapter ?? new H168Adapter();
     this.historySize = positiveInteger(options.historySize, 60);
     this.eventEngine = options.eventEngine ?? new EventEngine();
+    this.networkQuality = options.networkQuality ?? new NetworkQualityTracker();
+    this.networkProbe = options.networkProbe;
     this.getGateway = options.getGateway ?? (() => options.gateway ?? null);
     this.onUpdate = options.onUpdate;
     this.onError = options.onError;
@@ -84,9 +97,14 @@ export class DevicePollingSession {
   }
 
   reset(): void {
+    this.sessionGeneration += 1;
     this.engine.reset();
     this.history.length = 0;
     this.eventEngine.reset();
+    this.networkQuality.reset();
+    this.networkProbeInFlight = null;
+    this.latestNetworkUpdate = null;
+    this.networkProbeErrorReported = false;
     this.latest = null;
   }
 
@@ -97,14 +115,83 @@ export class DevicePollingSession {
   }
 
   private acceptSnapshot(snapshot: CpeSnapshot): void {
-    this.eventEngine.ingest(snapshot);
-    this.history.push(snapshot);
+    const enrichedSnapshot = this.latestNetworkUpdate === null
+      ? snapshot
+      : {
+          ...snapshot,
+          connection: {
+            ...snapshot.connection,
+            internetOnline: this.latestNetworkUpdate.internetOnline,
+          },
+          network: {
+            ...snapshot.network,
+            ...this.latestNetworkUpdate.metrics,
+            downloadBps: snapshot.network.downloadBps,
+            uploadBps: snapshot.network.uploadBps,
+          },
+        };
+    this.eventEngine.ingest(enrichedSnapshot);
+    this.history.push(enrichedSnapshot);
     while (this.history.length > this.historySize) this.history.shift();
     const report: CpeLiveReport = {
       schemaVersion: 1,
       generatedAt: snapshot.timestamp,
       adapterId: this.adapter.id,
       gateway: this.getGateway(),
+      snapshot: enrichedSnapshot,
+      history: [...this.history],
+      events: [...this.eventEngine.events] as CpeEvent[],
+    };
+    this.latest = report;
+    this.onUpdate?.(report);
+    this.startNetworkProbe();
+  }
+
+  private startNetworkProbe(): void {
+    if (!this.networkProbe || this.networkProbeInFlight !== null) return;
+    const generation = this.sessionGeneration;
+    const operation = Promise.resolve().then(() => this.networkProbe!()).then((sample) => {
+      if (generation !== this.sessionGeneration) return;
+      this.networkProbeErrorReported = false;
+      this.latestNetworkUpdate = this.networkQuality.record(sample);
+      this.applyNetworkQuality(this.latestNetworkUpdate);
+    });
+    this.networkProbeInFlight = operation;
+    void operation
+      .catch((error) => {
+        if (!this.networkProbeErrorReported) {
+          this.networkProbeErrorReported = true;
+          this.onError?.(error);
+        }
+      })
+      .finally(() => {
+        if (this.networkProbeInFlight === operation) this.networkProbeInFlight = null;
+      });
+  }
+
+  private applyNetworkQuality(update: NetworkQualityUpdate): void {
+    const latest = this.latest;
+    const current = latest?.snapshot;
+    if (!latest || !current) return;
+
+    const snapshot: CpeSnapshot = {
+      ...current,
+      connection: {
+        ...current.connection,
+        internetOnline: update.internetOnline,
+      },
+      network: {
+        ...current.network,
+        ...update.metrics,
+        downloadBps: current.network.downloadBps,
+        uploadBps: current.network.uploadBps,
+      },
+    };
+    this.eventEngine.ingest(snapshot);
+    this.history[this.history.length - 1] = snapshot;
+    const report: CpeLiveReport = {
+      ...latest,
+      generatedAt: snapshot.timestamp,
       snapshot,
       history: [...this.history],
       events: [...this.eventEngine.events] as CpeEvent[],

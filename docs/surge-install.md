@@ -2,9 +2,10 @@
 
 当前 `surge/bridge.js` 是实验性的只读 Bridge：它会发现 IPv4 默认网关、先读取
 `basic_information` 确认 H168-383，再读取公开和认证 endpoint。`/api/probe` 返回
-脱敏 `ProbeReport`，`/api/endpoint/<id>` 返回一个脱敏 endpoint 结果，`/api/live`
-返回单次脱敏 `CpeLiveReport`。真实固件、Cookie/Token 轮换和字段含义仍需用户设备
-验证；默认连续刷新由 PWA 的 `DevicePollingSession`/`PollingEngine` 负责。
+脱敏 `ProbeReport`，`/api/endpoint/<id>` 返回一个脱敏 endpoint 结果，`/api/network-probe`
+返回一次 Surge 用户路径样本，`/api/live` 返回单次脱敏 `CpeLiveReport`。真实固件、
+Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新由 PWA 的
+`DevicePollingSession`/`PollingEngine` 负责。
 
 ## 安装前提
 
@@ -32,6 +33,11 @@
    登录。
 6. 对需要反馈的 endpoint 点击 `Copy Sanitized Result`，只发送脱敏结果；不要发送
    浏览器 Network 导出、完整 Cookie、密码或未脱敏 RAW XML。
+
+如果要记录 Internet 可达性，在页面填写一个自己信任、低负载且返回 2xx/3xx 的 HTTPS
+探测地址。地址只保存在本机浏览器设置，并通过 `/api/network-probe` 交给 Surge 本地
+访问；不填写时 InternetOnline、Ping、Loss、Jitter 保持 `null`。这里的延迟是 HTTP
+用户路径延迟，不是 ICMP Ping。
 
 密码通过 POST body 发往专用 Bridge URL，由匹配的 Surge `http-request` script
 在本地拦截；它不会被 Bridge 转发到远端服务器。若 Surge 没有启用或 pattern/MITM

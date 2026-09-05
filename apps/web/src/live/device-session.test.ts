@@ -93,4 +93,35 @@ describe("DevicePollingSession", () => {
     expect(session.latestReport?.history).toHaveLength(2);
     expect(session.latestReport?.gateway).toBe("192.168.8.1");
   });
+
+  it("applies delayed user-path samples without adding duplicate radio history", async () => {
+    let resolveProbe: ((sample: { timestamp: string; success: boolean; latencyMs: number | null }) => void) | undefined;
+    const networkProbe = new Promise<{ timestamp: string; success: boolean; latencyMs: number | null }>((resolve) => {
+      resolveProbe = resolve;
+    });
+    const updates: CpeSnapshot[] = [];
+    const withUpdates = new DevicePollingSession(async (endpoint) => result(endpoint), {
+      adapter: {
+        id: "h168",
+        modelNames: ["fixture"],
+        probeEndpoints: endpoints,
+        baselineCapabilities: {} as CpeAdapter["baselineCapabilities"],
+        identify: () => ({ matched: true, confidence: "possible", reason: "test" }),
+        normalize: (input) => snapshot(new Date(input.timestamp).toISOString()),
+      },
+      endpoints,
+      gateway: "192.168.8.1",
+      networkProbe: () => networkProbe,
+      onUpdate: (report) => updates.push(report.snapshot),
+    });
+
+    await withUpdates.pollNow();
+    resolveProbe?.({ timestamp: "2026-09-05T00:00:00.100Z", success: true, latencyMs: 31 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(updates.at(-1)?.network.pingMs).toBe(31);
+    expect(updates.at(-1)?.connection.internetOnline).toBeNull();
+    expect(withUpdates.latestReport?.history).toHaveLength(1);
+  });
 });

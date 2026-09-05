@@ -13,17 +13,21 @@ export interface EndpointClientOptions {
   onGateway?: (gateway: string | null) => void;
 }
 
-function endpointPath(value: string, endpointId: string): string {
+function bridgePath(value: string, route: string): string {
   try {
     const url = new URL(value);
     const marker = url.pathname.indexOf("/api/");
     const prefix = marker >= 0 ? url.pathname.slice(0, marker) : url.pathname.replace(/\/$/, "");
-    url.pathname = `${prefix}/api/endpoint/${encodeURIComponent(endpointId)}`;
+    url.pathname = `${prefix}/api/${route}`;
     url.search = "";
     return url.toString();
   } catch {
-    return value.replace(/\/api\/(?:probe|live)$/, `/api/endpoint/${encodeURIComponent(endpointId)}`);
+    return value.replace(/\/api\/(?:probe|live)$/, `/api/${route}`);
   }
+}
+
+function endpointPath(value: string, endpointId: string): string {
+  return bridgePath(value, `endpoint/${encodeURIComponent(endpointId)}`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -123,4 +127,4 @@ export class H168EndpointClient {
   }
 }
 
-export { endpointPath };
+export { bridgePath, endpointPath };

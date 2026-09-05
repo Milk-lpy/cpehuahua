@@ -22,7 +22,7 @@ packages/core
   adapters   CpeAdapter → H168Adapter / H155Adapter stub
   probe      端点目录、顺序采集器、脱敏结果
 surge
-  module + experimental bridge（本地 HTTP、登录、Probe、endpoint 和 live 回退）
+  module + experimental bridge（本地 HTTP、登录、Probe、endpoint、network probe 和 live 回退）
 ```
 
 ## 数据流

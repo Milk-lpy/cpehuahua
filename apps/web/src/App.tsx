@@ -4,6 +4,8 @@ import { H168_PROBE_ENDPOINTS } from "@cpehuahua/core";
 import { DashboardPage } from "./dashboard/DashboardPage";
 import { H168EndpointClient } from "./live/endpoint-client";
 import { DevicePollingSession } from "./live/device-session";
+import { SurgeNetworkProbeClient } from "./live/network-client";
+import { loadNetworkProbeUrl, saveNetworkProbeUrl } from "./live/network-settings";
 import {
   clearPersistedLiveReport,
   loadPersistedLiveReport,
@@ -102,6 +104,7 @@ function EndpointCard({ row }: { row: ReturnType<typeof toProbeRows>[number] }) 
 
 function App() {
   const [bridgeUrl, setBridgeUrl] = useState(DEFAULT_BRIDGE_URL);
+  const [networkProbeUrl, setNetworkProbeUrl] = useState(() => loadNetworkProbeUrl());
   const [report, setReport] = useState<ProbeReport | null>(null);
   const [liveReport, setLiveReport] = useState<CpeLiveReport | null>(() => loadPersistedLiveReport());
   const [restoredFromStorage, setRestoredFromStorage] = useState(() => liveReport !== null);
@@ -134,8 +137,13 @@ function App() {
       getPassword: () => livePasswordRef.current,
       rememberSession: () => rememberSession,
     });
+    const configuredProbeUrl = networkProbeUrl.trim();
+    const networkClient = new SurgeNetworkProbeClient(bridgeUrl);
     const session = new DevicePollingSession(client.read.bind(client), {
       getGateway: () => client.gateway,
+      ...(configuredProbeUrl
+        ? { networkProbe: () => networkClient.probe(configuredProbeUrl) }
+        : {}),
       onUpdate: (update) => {
         setLiveReport(update);
         setRestoredFromStorage(false);
@@ -283,6 +291,22 @@ function App() {
           autoComplete="current-password"
           placeholder="不写入 URL"
         />
+        <label className="input-label" htmlFor="network-probe-url">Internet 用户路径探测 URL（可选）</label>
+        <input
+          id="network-probe-url"
+          type="url"
+          value={networkProbeUrl}
+          onChange={(event) => {
+            const value = event.target.value;
+            setNetworkProbeUrl(value);
+            saveNetworkProbeUrl(value);
+          }}
+          spellCheck={false}
+          placeholder="https://你的低负载探测地址/health"
+        />
+        <p className="helper-text">
+          不填写时 Internet、Ping、Loss、Jitter 保持 null。填写后由 Surge 在本地访问该 HTTPS 地址；记录的是用户路径 HTTP 延迟，不是 ICMP Ping。
+        </p>
         <div className="checkbox-row">
           <label><input type="checkbox" checked={rememberSession} onChange={(event) => setRememberSession(event.target.checked)} /> Remember Session</label>
           <label><input type="checkbox" checked={rememberPassword} onChange={(event) => setRememberPassword(event.target.checked)} /> Remember Password</label>
