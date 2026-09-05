@@ -22,7 +22,7 @@ packages/core
   adapters   CpeAdapter → H168Adapter / H155Adapter stub
   probe      端点目录、顺序采集器、脱敏结果
 surge
-  module + experimental bridge（本地 HTTP、登录、一次性 Probe；轮询后续实现）
+  module + experimental bridge（本地 HTTP、登录、Probe 和单次 live 快照）
 ```
 
 ## 数据流
@@ -36,7 +36,7 @@ H168 XML + HTTP metadata
                     │
              CpeSnapshot + capabilities
                     │
-          EventEngine / PollingEngine（后续阶段）
+          LivePollingSession / PollingEngine → EventEngine
 ```
 
 Probe 结果同时保存 `rawXml` 和 `sanitizedRawXml`。UI 默认只显示后者；复制功能只
@@ -66,10 +66,11 @@ interface CpeAdapter {
 
 新流程优先：`SesTokInfo → challenge_login → 新 token → authentication_login`；
 旧 `/api/webserver/token` 只是兼容 fallback。遇到 `125003`/CSRF 失效，实时请求
-最多重认证一次，第二次仍失败就报告错误。当前 Bridge 只做一次完整 Probe；实时
-请求集中调度会在后续 PollingEngine 阶段接入。
+最多重认证一次，第二次仍失败就报告错误。请求集中调度由 core `PollingEngine` 和
+PWA `LivePollingSession` 承担；当前 Bridge 的 `/api/live` 是原子快照接口，端点级
+节流仍需实机后决定。
 
-## 采样调度（后续 Phase 5）
+## 采样调度
 
 所有刷新由单一 `PollingEngine` 调度，组件不能各自设置 timer：
 
@@ -83,6 +84,12 @@ interface CpeAdapter {
 
 此表是调度建议，不是 H168 字段支持声明。实际设备若返回慢或限流，Engine 需要按
 响应耗时和错误码退避。
+
+`packages/core/src/polling` 的 `PollingEngine` 按 endpoint 的 `intervalMs` 保存 due
+time、串行读取并把最新结果交给 Adapter。当前 `/api/live` 返回的是一次完整快照，
+因此 Web 使用 `LivePollingSession` 以 1 秒可配置间隔集中获取，保留最近 60 条快照。
+后续若实机证明全量请求负载过高，再将 Surge Bridge 拆成端点级读取，而不改变 UI
+和 EventEngine 契约。
 
 ## 关键架构决策
 
@@ -106,6 +113,7 @@ Cookie/CSRF/认证和本地解析，必须严格限制 MITM 主机和持久化�
 
 ### ADR-004：集中轮询与可恢复状态
 
-选择后续由一个 PollingEngine 统一调度和生成 Snapshot，再由独立 EventEngine 消费。
-这样可以区分“蜂窝在线”和“Internet 在线”，并可靠计算恢复时长；代价是需要处理
-部分 endpoint 失败、旧值保留策略和时间戳一致性。
+选择由 PollingEngine/LivePollingSession 统一调度和生成 Snapshot，再由独立 EventEngine
+消费。`NetworkQualityTracker` 使用连续失败/恢复阈值，避免一个丢包造成状态抖动；代价
+是需要处理部分 endpoint 失败、旧值保留策略和时间戳一致性。完整用户路径探测目标
+仍需真实网络环境确认。

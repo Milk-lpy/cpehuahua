@@ -1,9 +1,9 @@
 # Surge Module 安装与 H168 实机 Probe
 
-当前 `surge/bridge.js` 是实验性的一次性只读 Probe，不是最终实时 Bridge：它会
-发现 IPv4 默认网关、先读取 `basic_information` 确认 H168-383，再读取公开和认证
-endpoint，并返回一个 `ProbeReport`。真实固件、Cookie/Token 轮换和字段含义仍需
-用户设备验证。
+当前 `surge/bridge.js` 是实验性的只读 Bridge：它会发现 IPv4 默认网关、先读取
+`basic_information` 确认 H168-383，再读取公开和认证 endpoint。`/api/probe` 返回
+脱敏 `ProbeReport`，`/api/live` 返回单次脱敏 `CpeLiveReport`。真实固件、Cookie/Token
+轮换和字段含义仍需用户设备验证；连续刷新由 PWA 的 `LivePollingSession` 负责。
 
 ## 安装前提
 
@@ -25,7 +25,8 @@ endpoint，并返回一个 `ProbeReport`。真实固件、Cookie/Token 轮换和
    默认由 Bridge 使用 `admin`，不要求输入 URL。
 4. 建议首次只勾选 `Remember Session`，保持 `Remember Password` 关闭。
 5. 点击“读取 Probe”。Bridge 在 Surge 本地依次探测 endpoint，页面展示 HTTP 状态、
-   Huawei error、延迟、完整 parsed fields 和脱敏 RAW XML。
+   Huawei error、延迟、完整 parsed fields 和脱敏 RAW XML。进入 Dashboard 后可启动
+   当前版本的集中 live 快照轮询。
 6. 对需要反馈的 endpoint 点击 `Copy Sanitized Result`，只发送脱敏结果；不要发送
    浏览器 Network 导出、完整 Cookie、密码或未脱敏 RAW XML。
 

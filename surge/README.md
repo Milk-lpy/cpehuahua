@@ -6,9 +6,11 @@
 Probe 契约上。
 
 它只匹配专用 Bridge URL，先用 `$network.v4.primaryRouter` 找默认网关，再读取
-H168-383 的公开/认证只读 endpoint。登录 POST 仅用于认证，不是配置写操作。真实
-设备兼容性尚未在本仓库验证。跨域访问只允许 `bridge.js` 中列出的 PWA origin，
-部署时必须替换示例域名，不要改成任意来源。
+H168-383 的公开/认证只读 endpoint。`/api/probe` 返回脱敏 ProbeReport，`/api/live`
+额外返回单次 `CpeLiveReport` 和保守规范化快照。登录 POST 仅用于认证，不是配置写
+操作。真实设备兼容性尚未在本仓库验证。跨域访问只允许 `bridge.js` 中列出的 PWA
+origin，部署时必须替换示例域名，不要改成任意来源。
 
-后续增加 PollingEngine 前，应把此入口拆为 Surge 适用的模块并由 bundler 生成；不要
-让 UI 直接请求 H168，也不要在这里加入配置修改 endpoint。
+PWA 当前通过 `LivePollingSession` 集中请求 `/api/live`；如果实机证明完整读取会造成
+负载，再把入口拆成端点级 Surge 路由并接入 core `PollingEngine`。不要让 UI 直接请求
+H168，也不要在这里加入配置修改 endpoint。

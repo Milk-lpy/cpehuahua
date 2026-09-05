@@ -15,10 +15,12 @@ Huawei / Brovi H168-383（鸿蒙智选 5G CPE Ultra 6），重点是移动场景
 - 分层、Adapter、只读和本地优先决策：见 [docs/architecture.md](docs/architecture.md)
 - TypeScript strict 核心模型、XML 解析、H168 登录状态机基础和测试
 - H168 Probe 的端点清单、原始响应/脱敏响应契约和朴素 Probe 页面
-- 实验性的 Surge 只读 Probe Bridge：单次收集公开/认证 endpoint；实时轮询仍在后续阶段
+- 集中 `PollingEngine`、用户路径 `NetworkQualityTracker`、独立 `EventEngine` 及其测试
+- Dashboard shell、动态 PCC/SCell/Neighbor 展示、事件时间线和 PWA 离线壳
+- 实验性的 Surge 只读 Bridge：`/api/probe` 返回脱敏诊断，`/api/live` 返回单次规范化快照
 
-本轮没有实现完整视觉 Dashboard、锁频、锁 PCI、锁小区、APN、重启 CPE 或其他
-写操作。
+本轮没有实现生产级全量字段支持、真实设备验证、端点级 Surge 轮询优化、稳定的
+Internet 探测目标、锁频、锁 PCI、锁小区、APN、重启 CPE 或其他写操作。
 
 ## 目标运行方式
 
