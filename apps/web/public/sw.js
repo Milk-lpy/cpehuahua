@@ -1,4 +1,4 @@
-const CACHE_NAME = "cpehuahua-shell-v1";
+const CACHE_NAME = "cpehuahua-shell-v2";
 const BASE_PATH = new URL("./", self.location).pathname;
 const API_PATH = BASE_PATH === "/" ? "/api/" : `${BASE_PATH}api/`;
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}index.html`, `${BASE_PATH}manifest.webmanifest`];
