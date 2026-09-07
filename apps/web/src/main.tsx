@@ -4,6 +4,12 @@ import App from "./App";
 import "./styles.css";
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { updateViaCache: "none" })
       .then((registration) => registration.update())

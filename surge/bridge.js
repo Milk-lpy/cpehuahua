@@ -17,6 +17,7 @@ const DEVICE_TIMEOUT_SECONDS = 8;
 const ALLOWED_WEB_ORIGINS = new Set([
   "https://milk-lpy.github.io",
   "http://localhost:4173",
+  "http://127.0.0.1:4173",
 ]);
 
 // 100003 means "no rights" on Huawei firmware. For runtime data endpoints it
@@ -47,6 +48,10 @@ const ENDPOINTS = [
   endpoint("developermode-developer-item", "Developer items (read-only candidate)", "/api/developermode/developer-item", true, null, "reference-shape"),
   endpoint("app-atport-status", "AT port status (GET only)", "/api/app/atport-status", true, null, "reference-shape"),
   endpoint("net-cell-info", "Generic cell info (candidate)", "/api/net/cell-info", true, null, "candidate"),
+  endpoint("monitoring-month-statistics", "Monthly traffic statistics (candidate)", "/api/monitoring/month_statistics", true, null, "candidate"),
+  endpoint("wlan-host-list", "Connected WLAN clients (candidate)", "/api/wlan/host-list", true, null, "candidate"),
+  endpoint("monitoring-check-notifications", "Notifications / unread SMS count (candidate)", "/api/monitoring/check-notifications", true, null, "candidate"),
+  endpoint("sms-count", "SMS mailbox counts (candidate)", "/api/sms/sms-count", true, null, "candidate"),
 ];
 
 const SENSITIVE_KEYS = new Set([

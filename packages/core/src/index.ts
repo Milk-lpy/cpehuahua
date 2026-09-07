@@ -3,6 +3,7 @@ export * from "./auth";
 export * from "./probe";
 export * from "./polling";
 export * from "./network";
+export * from "./signal";
 export * from "./event-engine";
 export * from "./types";
 export * from "./xml";

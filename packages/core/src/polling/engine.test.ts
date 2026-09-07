@@ -44,13 +44,23 @@ const adapter: CpeAdapter = {
     schemaVersion: 1,
     timestamp: input.timestamp,
     source: input.source,
-    device: { model: null, firmware: null, uptimeSeconds: null },
+    device: {
+      model: null,
+      productName: null,
+      hardwareVersion: null,
+      firmware: null,
+      webUiVersion: null,
+      parameterVersion: null,
+      uptimeSeconds: null,
+    },
     connection: {
       cellularOnline: null,
       internetOnline: null,
       radioMode: "unknown",
       saNsa: "unknown",
       plmn: null,
+      operatorName: null,
+      cellularStatusCode: null,
     },
     radio: {
       rsrpDbm: null,
@@ -78,6 +88,8 @@ const adapter: CpeAdapter = {
       packetLossPct: null,
       downloadBps: null,
       uploadBps: null,
+      currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null,
+      totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null,
     },
     extended: {
       temperatureC: null,

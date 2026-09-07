@@ -132,6 +132,42 @@ export const H168_PROBE_ENDPOINTS: readonly ProbeEndpoint[] = [
     defaultEnabled: true,
     evidence: "candidate",
   },
+  {
+    id: "monitoring-month-statistics",
+    label: "Monthly traffic statistics (candidate)",
+    path: "/api/monitoring/month_statistics",
+    intervalMs: null,
+    requiresAuth: true,
+    defaultEnabled: true,
+    evidence: "candidate",
+  },
+  {
+    id: "wlan-host-list",
+    label: "Connected WLAN clients (candidate)",
+    path: "/api/wlan/host-list",
+    intervalMs: null,
+    requiresAuth: true,
+    defaultEnabled: true,
+    evidence: "candidate",
+  },
+  {
+    id: "monitoring-check-notifications",
+    label: "Notifications / unread SMS count (candidate)",
+    path: "/api/monitoring/check-notifications",
+    intervalMs: null,
+    requiresAuth: true,
+    defaultEnabled: true,
+    evidence: "candidate",
+  },
+  {
+    id: "sms-count",
+    label: "SMS mailbox counts (candidate)",
+    path: "/api/sms/sms-count",
+    intervalMs: null,
+    requiresAuth: true,
+    defaultEnabled: true,
+    evidence: "candidate",
+  },
 ];
 
 export const H168_CORE_ENDPOINT_IDS = [

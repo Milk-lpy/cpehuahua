@@ -7,13 +7,18 @@ function snapshot(second: number, internetOnline: boolean): CpeSnapshot {
     schemaVersion: 1,
     timestamp: `2026-09-05T00:00:${String(second).padStart(2, "0")}.000Z`,
     source: "live",
-    device: { model: "H168-383", firmware: null, uptimeSeconds: null },
+    device: {
+      model: "H168-383", productName: null, hardwareVersion: null, firmware: null,
+      webUiVersion: null, parameterVersion: null, uptimeSeconds: null,
+    },
     connection: {
       cellularOnline: true,
       internetOnline,
       radioMode: "5G",
       saNsa: "SA",
       plmn: null,
+      operatorName: null,
+      cellularStatusCode: "901",
     },
     radio: {
       rsrpDbm: -90,
@@ -41,6 +46,8 @@ function snapshot(second: number, internetOnline: boolean): CpeSnapshot {
       packetLossPct: 0,
       downloadBps: null,
       uploadBps: null,
+      currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null,
+      totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null,
     },
     extended: {
       temperatureC: null,

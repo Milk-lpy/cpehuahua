@@ -1,23 +1,10 @@
-import { useMemo, useState } from "react";
-import type { CpeCell, CpeEvent, CpeSnapshot } from "@cpehuahua/core";
-import {
-  aggregationLabel,
-  capabilityText,
-  chartPoints,
-  DASHBOARD_METRICS,
-  eventDetail,
-  eventLabel,
-  eventTone,
-  eventTime,
-  formatMetric,
-  metricDefinition,
-  metricValue,
-  statusClass,
-  statusText,
-  type DashboardMetricId,
-} from "./view-model";
+import { useState } from "react";
+import { isMirroredSecondaryCell, type CapabilityStatus, type CpeCell, type CpeEvent, type CpeSnapshot } from "@cpehuahua/core";
+import { BottomNav, type AppView } from "../ui/BottomNav";
+import { aggregationLabel, capabilityText, chartPoints, DASHBOARD_METRICS, eventDetail, eventLabel, eventTone, eventTime, formatDuration, formatMetric, metricDefinition, statusClass, statusText, type DashboardMetricId } from "./view-model";
 
 interface DashboardPageProps {
+  activeView: Exclude<AppView, "probe">;
   snapshot: CpeSnapshot | null;
   history: readonly CpeSnapshot[];
   events: readonly CpeEvent[];
@@ -26,359 +13,123 @@ interface DashboardPageProps {
   liveError: string | null;
   networkProbeConfigured: boolean;
   onToggleLive: () => void;
-  onBackToProbe: () => void;
+  onNavigate: (view: AppView) => void;
   onClearCache: () => void;
 }
 
-function Value({ value, unit = "" }: { value: number | string | null; unit: string }) {
+function Value({ value, unit = "" }: { value: number | string | null; unit?: string }) {
   if (value === null || value === "") return <span className="value-null">—</span>;
-  return <span>{typeof value === "number" ? formatMetric(value, unit) : value}</span>;
+  return <>{typeof value === "number" ? formatMetric(value, unit) : value}</>;
 }
 
-function DefinitionList({ items }: { items: Array<[string, number | string | null, string?]> }) {
-  return (
-    <dl className="detail-list">
-      {items.map(([label, value, unit]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd><Value value={value} unit={unit ?? ""} /></dd>
-        </div>
-      ))}
-    </dl>
-  );
+function DetailList({ items }: { items: Array<[string, number | string | null, string?]> }) {
+  return <dl className="detail-list">{items.map(([label, value, unit]) => <div key={label}><dt>{label}</dt><dd><Value value={value} unit={unit ?? ""} /></dd></div>)}</dl>;
 }
 
-function presentItems(items: Array<[string, number | string | null, string?]>): Array<[string, number | string | null, string?]> {
-  return items.filter(([, value]) => value !== null && value !== "");
+function SectionTitle({ eyebrow, title, badge }: { eyebrow: string; title: string; badge?: string | number }) {
+  return <div className="section-heading"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>{badge !== undefined && <span className="count-badge">{badge}</span>}</div>;
 }
 
-function cellName(cell: CpeCell, index: number): string {
-  if (cell.role === "pcc") return "PCC";
-  if (cell.role === "scell") return `SCell ${index}`;
-  if (cell.role === "neighbor") return `Neighbor ${index}`;
-  return `Cell ${index}`;
-}
-
-function CellCard({ cell, index }: { cell: CpeCell; index: number }) {
-  return (
-    <article className={`cell-card cell-card--${cell.role}`}>
-      <div className="cell-card__heading">
-        <div>
-          <p className="eyebrow">{cellName(cell, index)}</p>
-          <h3>{cell.band ?? "频段未返回"}</h3>
-        </div>
-        <span className="status-chip status-chip--muted">{cell.technology}</span>
-      </div>
-      <DefinitionList items={[
-        ["PCI", cell.pci],
-        ["Cell ID", cell.cellId],
-        ["RSRP", cell.rsrpDbm, "dBm"],
-        ["RSRQ", cell.rsrqDb, "dB"],
-        ["SINR", cell.sinrDb, "dB"],
-        ["ARFCN", cell.arfcn],
-        ["Bandwidth", cell.bandwidth],
-      ]} />
-    </article>
-  );
+function PageHeader({ snapshot, liveMonitoring, onToggleLive, onProbe }: { snapshot: CpeSnapshot; liveMonitoring: boolean; onToggleLive: () => void; onProbe: () => void }) {
+  return <header className="app-header">
+    <div className="brand-line"><span className="brand-paw" aria-hidden="true">●</span><span>CPE Huahua</span><i>read only</i></div>
+    <div className="title-row"><div><h1>{snapshot.device.model ?? "H168"}</h1><p>{snapshot.device.productName ?? "本地 5G CPE 监控"}</p></div><span className={`live-badge ${liveMonitoring ? "is-live" : ""}`}>{liveMonitoring ? "LIVE" : "PAUSED"}</span></div>
+    <div className="header-toolbar"><span>快照 {new Date(snapshot.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</span><button className="soft-button" type="button" onClick={onToggleLive}>{liveMonitoring ? "暂停实时" : "启动实时"}</button><button className="icon-button" type="button" onClick={onProbe} aria-label="打开探针">⌁</button></div>
+  </header>;
 }
 
 function LineChart({ history, metric }: { history: readonly CpeSnapshot[]; metric: DashboardMetricId }) {
-  const points = chartPoints(history, metric);
-  const definition = metricDefinition(metric);
-  const width = 360;
-  const height = 128;
-  const left = 12;
-  const right = width - 12;
-  const top = 12;
-  const bottom = height - 18;
-  const values = points.map((point) => point.value);
-  const rawMin = values.length > 0 ? Math.min(...values) : 0;
-  const rawMax = values.length > 0 ? Math.max(...values) : 1;
-  const padding = rawMin === rawMax ? Math.max(1, Math.abs(rawMin) * 0.1) : (rawMax - rawMin) * 0.12;
-  const min = rawMin - padding;
-  const max = rawMax + padding;
-  const x = (index: number) => history.length <= 1
-    ? (left + right) / 2
-    : left + (index / (history.length - 1)) * (right - left);
+  const points = chartPoints(history, metric), definition = metricDefinition(metric);
+  const width = 360, height = 118, left = 10, right = 350, top = 10, bottom = 103;
+  const values = points.map((point) => point.value), rawMin = values.length ? Math.min(...values) : 0, rawMax = values.length ? Math.max(...values) : 1;
+  const padding = rawMin === rawMax ? Math.max(1, Math.abs(rawMin) * .08) : (rawMax - rawMin) * .12, min = rawMin - padding, max = rawMax + padding;
+  const x = (index: number) => history.length <= 1 ? 180 : left + (index / (history.length - 1)) * (right - left);
   const y = (value: number) => bottom - ((value - min) / (max - min)) * (bottom - top);
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${x(point.index).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
-
-  return (
-    <div className="chart-wrap">
-      <div className="chart-heading">
-        <div>
-          <p className="eyebrow">最近 {Math.max(0, history.length)} 个采样</p>
-          <h3>{definition.label} 趋势</h3>
-        </div>
-        <span className="chart-current">
-          {points.length > 0 ? formatMetric(points[points.length - 1]?.value ?? null, definition.unit) : "—"}
-        </span>
-      </div>
-      <svg className="line-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${definition.label} trend`}>
-        {[0.25, 0.5, 0.75].map((ratio) => {
-          const gridY = top + (bottom - top) * ratio;
-          return <line key={ratio} x1={left} x2={right} y1={gridY} y2={gridY} className="chart-gridline" />;
-        })}
-        <line x1={left} x2={right} y1={bottom} y2={bottom} className="chart-axis" />
-        <line x1={left} x2={left} y1={top} y2={bottom} className="chart-axis" />
-        {path && <path d={path} className="chart-line" fill="none" />}
-        {points.map((point) => (
-          <circle key={`${point.timestamp}-${point.index}`} cx={x(point.index)} cy={y(point.value)} r="2.8" className="chart-point" />
-        ))}
-        {points.length === 0 && <text x={width / 2} y={height / 2} textAnchor="middle" className="chart-empty">暂无已验证数据</text>}
-      </svg>
-    </div>
-  );
+  const path = points.map((point, index) => `${index ? "L" : "M"}${x(point.index).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
+  return <div className="chart-wrap"><div className="chart-heading"><div><p className="eyebrow">最近 {history.length} 个采样</p><h3>{definition.label} 趋势</h3></div><strong>{formatMetric(points.at(-1)?.value ?? null, definition.unit)}</strong></div><svg className="line-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${definition.label} 趋势`}>{[.25, .5, .75].map((ratio) => <line key={ratio} x1={left} x2={right} y1={top + (bottom - top) * ratio} y2={top + (bottom - top) * ratio} className="chart-gridline" />)}{path && <path d={path} className="chart-line" />}{points.map((point) => <circle key={`${point.timestamp}-${point.index}`} cx={x(point.index)} cy={y(point.value)} r="2.6" className="chart-point" />)}{!path && <text x="180" y="62" textAnchor="middle" className="chart-empty">等待已验证数据</text>}</svg></div>;
 }
 
-function SourceBadge({ source }: { source: CpeSnapshot["source"] }) {
-  const label = source === "live" ? "Live" : source === "fixture" ? "Fixture 参考" : "来源未验证";
-  return <span className={`stage-badge stage-badge--${source}`}>{label}</span>;
+function SignalRing({ value }: { value: number | null }) {
+  const score = value === null ? 0 : Math.max(0, Math.min(100, (value + 125) * 2));
+  return <div className="signal-ring">
+    <svg viewBox="0 0 120 120" aria-hidden="true"><circle className="signal-ring__track" cx="60" cy="60" r="50" pathLength="100" /><circle className="signal-ring__value" cx="60" cy="60" r="50" pathLength="100" strokeDasharray={`${score} 100`} /></svg>
+    <div><span>RSRP</span><strong>{value === null ? "—" : value}</strong><small>{value === null ? "未返回" : "dBm"}</small></div>
+  </div>;
 }
 
-export function DashboardPage({
-  snapshot,
-  history,
-  events,
-  cached,
-  liveMonitoring,
-  liveError,
-  networkProbeConfigured,
-  onToggleLive,
-  onBackToProbe,
-  onClearCache,
-}: DashboardPageProps) {
-  const [selectedMetric, setSelectedMetric] = useState<DashboardMetricId>("rsrpDbm");
+function MetricCard({ label, value, unit, color = "mint" }: { label: string; value: number | null; unit: string; color?: string }) {
+  return <article className={`metric-card metric-card--${color}`}><span>{label}</span><strong>{formatMetric(value, unit)}</strong></article>;
+}
 
-  const servingCells = useMemo(() => (
-    snapshot === null
-      ? []
-      : [snapshot.cells.pcc, ...snapshot.cells.scells].filter((cell): cell is CpeCell => cell !== null)
-  ), [snapshot]);
-  const extendedItems = snapshot === null ? [] : presentItems([
-    ["Temperature", snapshot.extended.temperatureC, "°C"],
-    ["Fan", snapshot.extended.fanRpm, "rpm"],
-    ["CPU", snapshot.extended.cpuUsagePct, "%"],
-    ["Memory", snapshot.extended.memoryUsagePct, "%"],
-    ["QCI", snapshot.extended.qci],
-    ["5QI", snapshot.extended.fiveQi],
-    ["DL AMBR", snapshot.extended.dlAmbr, "bps"],
-    ["UL AMBR", snapshot.extended.ulAmbr, "bps"],
-  ]);
-  const rawRadioItems = snapshot === null ? [] : presentItems([
-    ["MCS (DL) 原始", snapshot.radio.rawEvidence?.dlMcs ?? null],
-    ["MCS (UL) 原始", snapshot.radio.rawEvidence?.ulMcs ?? null],
-    ["TX Power 原始", snapshot.radio.rawEvidence?.txPower ?? null],
-  ]);
+function StatusPill({ label, value }: { label: string; value: boolean | null }) {
+  return <span className={`state-pill state-pill--${statusClass(value)}`}><i />{label} {statusText(value)}</span>;
+}
 
-  if (snapshot === null) {
-    return (
-      <main className="app-shell dashboard-shell">
-        <header className="page-header">
-          <div>
-            <p className="eyebrow">CPE Huahua / cpehuahua</p>
-            <h1>Dashboard</h1>
-            <p className="lede">Dashboard 只消费统一 CpeSnapshot；当前 Bridge 尚未返回实时快照。</p>
-          </div>
-          <div className="header-actions">
-            <button className="secondary-button" type="button" onClick={onToggleLive}>{liveMonitoring ? "停止实时" : "启动实时"}</button>
-            {cached && <button className="secondary-button" type="button" onClick={onClearCache}>清除缓存</button>}
-            <button className="secondary-button" type="button" onClick={onBackToProbe}>返回 Probe</button>
-          </div>
-        </header>
-        <section className="panel empty-state dashboard-empty">
-          <div className="empty-state__mark" aria-hidden="true">⌁</div>
-          <p className="eyebrow">Live monitor</p>
-          <strong>等待本地快照</strong>
-          <p>连接真实 H168-383 并完成 Probe/endpoint Bridge 接入后，这里才会显示指标。未验证字段不会用样例数字填充。</p>
-          {liveError !== null && <p className="error-banner">{liveError}</p>}
-          <button className="empty-state__action" type="button" onClick={onBackToProbe}>打开 Probe</button>
-        </section>
-      </main>
-    );
-  }
+function formatRate(value: number | null): string {
+  if (value === null) return "—";
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} Mbps`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} Kbps`;
+  return `${value} bps`;
+}
 
-  return (
-    <main className="app-shell dashboard-shell">
-      <header className="page-header dashboard-header">
-        <div>
-          <p className="eyebrow">CPE Huahua / cpehuahua</p>
-          <div className="dashboard-title-row">
-            <h1>{snapshot.device.model ?? "H168-383"}</h1>
-            <SourceBadge source={snapshot.source} />
-          </div>
-          <p className="lede">本地监控快照 · {new Date(snapshot.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</p>
-        </div>
-        <div className="header-actions">
-          <button className="secondary-button" type="button" onClick={onToggleLive}>{liveMonitoring ? "停止实时" : "启动实时"}</button>
-          {cached && <button className="secondary-button" type="button" onClick={onClearCache}>清除缓存</button>}
-          <button className="secondary-button" type="button" onClick={onBackToProbe}>Probe</button>
-        </div>
-      </header>
+function formatBytes(value: number | null): string {
+  if (value === null) return "—";
+  if (value >= 1_073_741_824) return `${(value / 1_073_741_824).toFixed(2)} GB`;
+  if (value >= 1_048_576) return `${(value / 1_048_576).toFixed(2)} MB`;
+  if (value >= 1_024) return `${(value / 1_024).toFixed(1)} KB`;
+  return `${value} B`;
+}
 
-      {liveError !== null && <div className="error-banner dashboard-error">{liveError}</div>}
+function combinedBytes(download: number | null, upload: number | null): number | null {
+  return download === null && upload === null ? null : (download ?? 0) + (upload ?? 0);
+}
 
-      {snapshot.source !== "live" && (
-        <div className="evidence-banner">这是 {snapshot.source === "fixture" ? "fixture 参考数据" : "非实机数据"}，不代表 H168-383 已被验证。</div>
-      )}
+function Overview({ snapshot, history, events, networkProbeConfigured }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; events: readonly CpeEvent[]; networkProbeConfigured: boolean }) {
+  const [metric, setMetric] = useState<DashboardMetricId>("rsrpDbm"), pcc = snapshot.cells.pcc;
+  return <>
+    <section className="hero-card"><div className="hero-copy"><p className="eyebrow">{snapshot.connection.operatorName ?? "蜂窝网络"}</p><h2>{snapshot.connection.saNsa === "unknown" ? snapshot.connection.radioMode : `${snapshot.connection.radioMode} ${snapshot.connection.saNsa}`}</h2><div className="status-pair"><StatusPill label="蜂窝" value={snapshot.connection.cellularOnline} /><StatusPill label="Internet" value={snapshot.connection.internetOnline} /></div></div><SignalRing value={snapshot.radio.rsrpDbm} /><div className="hero-tags"><span>{aggregationLabel(snapshot)}</span><span>PCI {snapshot.radio.pci ?? "—"}</span><span>PLMN {snapshot.connection.plmn ?? "—"}</span></div></section>
+    <section className="metric-grid"><MetricCard label="RSRP" value={snapshot.radio.rsrpDbm} unit="dBm" /><MetricCard label="SINR" value={snapshot.radio.sinrDb} unit="dB" color="sun" /><MetricCard label="RSRQ" value={snapshot.radio.rsrqDb} unit="dB" color="sky" /></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Serving cell" title="当前主小区" badge={pcc?.technology ?? "—"} /><div className="cell-summary"><div><b>{pcc?.band ?? "频段未返回"}</b><span>ARFCN {pcc?.arfcn ?? "—"}</span></div><div><b>{pcc?.bandwidth ?? "—"}</b><span>Cell ID {pcc?.cellId ?? "—"}</span></div></div></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Traffic" title="实时速率" /><div className="speed-grid"><div><span>↓ 下行</span><strong>{formatRate(snapshot.network.downloadBps)}</strong></div><div><span>↑ 上行</span><strong>{formatRate(snapshot.network.uploadBps)}</strong></div></div><div className="usage-strip"><span>本次流量 <b>{formatBytes(combinedBytes(snapshot.network.currentDownloadBytes, snapshot.network.currentUploadBytes))}</b></span><span>累计流量 <b>{formatBytes(combinedBytes(snapshot.network.totalDownloadBytes, snapshot.network.totalUploadBytes))}</b></span></div><p className="panel-note">{networkProbeConfigured ? `用户路径：${formatMetric(snapshot.network.pingMs, "ms")} · 丢包 ${formatMetric(snapshot.network.packetLossPct, "%")}` : "用户路径探测尚未配置，Ping 与丢包保持未验证。"}</p></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Live telemetry" title="实时曲线" badge="60 秒" /><div className="metric-tabs">{DASHBOARD_METRICS.slice(0, 6).map((item) => <button key={item.id} type="button" className={metric === item.id ? "is-active" : ""} onClick={() => setMetric(item.id)}>{item.label}</button>)}</div><LineChart history={history} metric={metric} /></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Latest" title="最近事件" badge={events.length} />{events.length === 0 ? <Empty text="连续监控后，变化会出现在这里。" /> : <EventList events={events.slice(-3)} />}</section>
+  </>;
+}
 
-      {cached && (
-        <div className="evidence-banner evidence-banner--cached">
-          这是浏览器本地保存的上次规范化快照，当前尚未连接 Bridge；本地缓存不包含密码、Session、Token 或 RAW XML。
-        </div>
-      )}
+function CellCard({ cell, title, mirrored = false }: { cell: CpeCell; title: string; mirrored?: boolean }) {
+  return <article className="cell-card"><div className="cell-card__heading"><div><p className="eyebrow">{title}</p><h3>{cell.band ?? "频段未返回"}</h3></div><span className="tech-badge">{cell.technology}</span></div>{mirrored && <p className="mirror-note">与 PCC 身份一致；保留设备原始返回，CA 语义待确认。</p>}<div className="cell-metrics"><span>PCI <b>{cell.pci ?? "—"}</b></span><span>ARFCN <b>{cell.arfcn ?? "—"}</b></span><span>RSRP <b>{formatMetric(cell.rsrpDbm, "dBm")}</b></span><span>SINR <b>{formatMetric(cell.sinrDb, "dB")}</b></span></div></article>;
+}
 
-      {!liveMonitoring && !cached && (
-        <div className="evidence-banner evidence-banner--cached">
-          当前显示最近一次本地快照；点击“启动实时”后，页面才会继续从 Surge Bridge 读取 H168。
-        </div>
-      )}
+function CellsPage({ snapshot }: { snapshot: CpeSnapshot }) {
+  const values = Object.values(snapshot.capabilities), observed = values.filter((value) => value === "observed").length, unknown = values.filter((value) => value === "unknown").length, unsupported = values.filter((value) => value === "unsupported").length;
+  return <>
+    <section className="soft-panel"><SectionTitle eyebrow="Serving cells" title="服务小区" badge={(snapshot.cells.pcc ? 1 : 0) + snapshot.cells.scells.length} /><div className="card-stack">{snapshot.cells.pcc ? <CellCard cell={snapshot.cells.pcc} title="PCC · 主载波" /> : <Empty text="设备未返回可解析 PCC。" />}{snapshot.cells.scells.map((cell, index) => <CellCard key={`s-${index}`} cell={cell} title={`SCell ${index + 1} · 设备返回`} mirrored={isMirroredSecondaryCell(snapshot, cell)} />)}</div></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Neighbor cells" title="邻区" badge={snapshot.cells.neighbors.length} /><div className="card-stack">{snapshot.cells.neighbors.length ? snapshot.cells.neighbors.map((cell, index) => <CellCard key={`n-${index}`} cell={cell} title={`Neighbor ${index + 1}`} />) : <Empty text="当前没有已解析邻区。" />}</div></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Advanced radio" title="无线证据" /><DetailList items={[["Band", snapshot.radio.band], ["Bandwidth", snapshot.radio.bandwidth], ["RRC 原始状态", snapshot.radio.rrcStatus], ["CQI", snapshot.radio.cqi], ["MIMO Rank", snapshot.radio.mimoRank], ["BLER", snapshot.radio.blerPct, "%"], ["MCS (DL) 原始", snapshot.radio.rawEvidence?.dlMcs ?? null], ["MCS (UL) 原始", snapshot.radio.rawEvidence?.ulMcs ?? null], ["TX Power 原始", snapshot.radio.rawEvidence?.txPower ?? null]]} /><p className="panel-note">复合字段保留设备原文，不虚构单一数值。</p></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Capability" title="字段证据" /><div className="capability-summary"><span><b>{observed}</b> 已观察</span><span><b>{unknown}</b> 未验证</span><span><b>{unsupported}</b> 被拒绝</span></div><details className="capability-details"><summary>查看全部字段状态</summary><div className="capability-grid">{Object.entries(snapshot.capabilities).map(([key, value]) => <span key={key} className={`capability-item is-${value}`}><b>{key}</b><em>{capabilityText(value as CapabilityStatus)}</em></span>)}</div></details></section>
+  </>;
+}
 
-      <section className="panel dashboard-overview">
-        <div className="overview-heading">
-          <div>
-            <p className="eyebrow">Live connection</p>
-            <h2>连接状态</h2>
-          </div>
-          <div className="status-pair">
-            <span className={`state-pill state-pill--${statusClass(snapshot.connection.cellularOnline)}`}><i /> Cellular {statusText(snapshot.connection.cellularOnline)}</span>
-            <span className={`state-pill state-pill--${statusClass(snapshot.connection.internetOnline)}`}><i /> Internet {statusText(snapshot.connection.internetOnline)}</span>
-          </div>
-        </div>
-        <div className="connection-summary">
-          <strong>{snapshot.connection.saNsa === "unknown" ? "模式未验证" : `${snapshot.connection.radioMode} ${snapshot.connection.saNsa}`}</strong>
-          <span>{aggregationLabel(snapshot)}</span>
-          <span>PLMN {snapshot.connection.plmn ?? "—"}</span>
-          <span>Ping <Value value={snapshot.network.pingMs} unit="ms" /></span>
-          <span>Loss <Value value={snapshot.network.packetLossPct} unit="%" /></span>
-        </div>
-      </section>
+function EventList({ events }: { events: readonly CpeEvent[] }) {
+  return <ol className="event-list">{events.slice().reverse().map((item, index) => <li className={`event-item event-item--${eventTone(item.type)}`} key={`${item.timestamp}-${item.type}-${index}`}><time>{eventTime(item.timestamp)}</time><div><strong>{eventLabel(item.type)}</strong><span>{eventDetail(item)}</span></div></li>)}</ol>;
+}
 
-      <section className="metric-grid metric-grid--hero">
-        {(["rsrpDbm", "sinrDb", "rsrqDb"] as const).map((id) => {
-          const definition = metricDefinition(id);
-          return (
-            <article className="metric-card" key={id}>
-              <span>{definition.label}</span>
-              <strong>{formatMetric(metricValue(snapshot, id), definition.unit)}</strong>
-            </article>
-          );
-        })}
-      </section>
+function EventsPage({ events, snapshot }: { events: readonly CpeEvent[]; snapshot: CpeSnapshot }) {
+  const latestDown = events.slice().reverse().find((event) => event.type === "CELLULAR_DOWN" || event.type === "INTERNET_DOWN");
+  const recovered = latestDown && events.slice().reverse().find((event) => event.timestamp > latestDown.timestamp && (event.type === "CELLULAR_UP" || event.type === "INTERNET_UP"));
+  const duration = latestDown && !recovered ? Date.parse(snapshot.timestamp) - Date.parse(latestDown.timestamp) : null;
+  return <><section className="soft-panel event-hero"><SectionTitle eyebrow="Event timeline" title="连接与小区变化" badge={events.length} />{duration !== null && duration >= 0 ? <div className="outage-card"><span>当前中断持续</span><strong>{formatDuration(duration)}</strong></div> : <p className="panel-note">当前没有从事件序列确认的持续中断。</p>}</section><section className="soft-panel">{events.length ? <EventList events={events} /> : <Empty text="暂无事件。事件只来自连续真实快照，不会用样例填充。" />}</section></>;
+}
 
-      <section className="panel chart-panel">
-        <div className="section-heading chart-panel__heading">
-          <div><p className="eyebrow">Live telemetry</p><h2>实时曲线</h2></div>
-          <span className="chart-window">最近 60 秒</span>
-        </div>
-        <div className="metric-tabs" role="tablist" aria-label="Chart metric">
-          {DASHBOARD_METRICS.map((metric) => (
-            <button
-              className={`metric-tab ${selectedMetric === metric.id ? "metric-tab--active" : ""}`}
-              key={metric.id}
-              type="button"
-              role="tab"
-              aria-selected={selectedMetric === metric.id}
-              onClick={() => setSelectedMetric(metric.id)}
-            >
-              {metric.label}
-            </button>
-          ))}
-        </div>
-        <LineChart history={history} metric={selectedMetric} />
-      </section>
+function DevicePage({ snapshot, cached, onClearCache }: { snapshot: CpeSnapshot; cached: boolean; onClearCache: () => void }) {
+  return <><section className="soft-panel"><SectionTitle eyebrow="Device" title="设备信息" /><DetailList items={[["设备型号", snapshot.device.model], ["产品名称", snapshot.device.productName], ["开机时长", snapshot.device.uptimeSeconds === null ? null : formatUptime(snapshot.device.uptimeSeconds)], ["硬件版本", snapshot.device.hardwareVersion], ["软件版本", snapshot.device.firmware], ["Web UI 版本", snapshot.device.webUiVersion], ["参数版本", snapshot.device.parameterVersion]]} /></section><section className="soft-panel"><SectionTitle eyebrow="Network identity" title="网络身份" /><DetailList items={[["运营商", snapshot.connection.operatorName], ["PLMN", snapshot.connection.plmn], ["Huawei 状态码", snapshot.connection.cellularStatusCode], ["模式", snapshot.connection.radioMode], ["SA / NSA", snapshot.connection.saNsa], ["Cell ID", snapshot.radio.cellId], ["TAC", snapshot.radio.tac]]} /></section><section className="soft-panel privacy-card"><SectionTitle eyebrow="Privacy" title="本地数据" /><p>页面只保存规范化快照与事件，不保存密码、Session、Token 或 RAW XML。</p>{cached && <button className="danger-soft-button" type="button" onClick={onClearCache}>清除本地快照</button>}</section></>;
+}
 
-      <section className="panel">
-        <div className="section-heading"><div><p className="eyebrow">Serving Cells</p><h2>PCC / SCell</h2></div><span className="count-badge">{servingCells.length}</span></div>
-        <div className="cell-grid">
-          {servingCells.length === 0 ? <p className="muted">暂无已解析小区</p> : servingCells.map((cell, index) => <CellCard cell={cell} index={cell.role === "pcc" ? 0 : snapshot.cells.scells.indexOf(cell) + 1} key={`${cell.role}-${index}`} />)}
-        </div>
-      </section>
+function formatUptime(seconds: number): string { const days = Math.floor(seconds / 86400), hours = Math.floor((seconds % 86400) / 3600), minutes = Math.floor((seconds % 3600) / 60); return `${days ? `${days}天 ` : ""}${hours}时${minutes}分`; }
+function Empty({ text }: { text: string }) { return <div className="empty-state"><span aria-hidden="true">⌁</span><p>{text}</p></div>; }
 
-      <section className="detail-columns">
-        <section className="panel">
-          <div className="section-heading"><div><p className="eyebrow">Advanced Radio</p><h2>无线参数</h2></div></div>
-          <DefinitionList items={[
-            ["Band", snapshot.radio.band],
-            ["ARFCN", snapshot.radio.arfcn],
-            ["PCI", snapshot.radio.pci],
-            ["Cell ID", snapshot.radio.cellId],
-            ["TAC", snapshot.radio.tac],
-            ["Bandwidth", snapshot.radio.bandwidth],
-            ["RRC 状态（原始）", snapshot.radio.rrcStatus],
-            ["CQI", snapshot.radio.cqi],
-            ["MIMO Rank", snapshot.radio.mimoRank],
-            ["MCS (DL)", snapshot.radio.dlMcs],
-            ["MCS (UL)", snapshot.radio.ulMcs],
-            ["BLER", snapshot.radio.blerPct, "%"],
-            ["TX Power", snapshot.radio.txPowerDbm, "dBm"],
-          ]} />
-          {rawRadioItems.length > 0 && (
-            <div className="raw-radio-evidence">
-              <p className="eyebrow">Observed raw fields</p>
-              <DefinitionList items={rawRadioItems} />
-              <p className="helper-text">设备返回的是复合文本，保留原文，不压缩成单一数值。</p>
-            </div>
-          )}
-        </section>
-        <section className="panel">
-          <div className="section-heading">
-            <div><p className="eyebrow">Network Quality</p><h2>用户路径</h2></div>
-            <span className="section-note">{networkProbeConfigured ? "Surge · 最快 1 秒/次" : "未配置探测地址"}</span>
-          </div>
-          <DefinitionList items={[
-            ["Ping", snapshot.network.pingMs, "ms"],
-            ["Jitter", snapshot.network.jitterMs, "ms"],
-            ["Packet loss", snapshot.network.packetLossPct, "%"],
-            ["Download", snapshot.network.downloadBps, "bps"],
-            ["Upload", snapshot.network.uploadBps, "bps"],
-          ]} />
-        </section>
-      </section>
-
-      <section className="panel">
-        <div className="section-heading"><div><p className="eyebrow">Neighbor Cells</p><h2>邻区</h2></div><span className="count-badge">{snapshot.cells.neighbors.length}</span></div>
-        <div className="cell-grid">
-          {snapshot.cells.neighbors.length === 0 ? <p className="muted">暂无已解析邻区</p> : snapshot.cells.neighbors.map((cell, index) => <CellCard cell={cell} index={index + 1} key={`neighbor-${index}`} />)}
-        </div>
-      </section>
-
-      <section className="detail-columns">
-        <section className="panel">
-          <div className="section-heading"><div><p className="eyebrow">Device</p><h2>设备</h2></div></div>
-          <DefinitionList items={[
-            ["Model", snapshot.device.model],
-            ["Firmware", snapshot.device.firmware],
-            ["Uptime", snapshot.device.uptimeSeconds, "s"],
-            ["PLMN", snapshot.connection.plmn],
-          ]} />
-        </section>
-        <section className="panel">
-          <div className="section-heading"><div><p className="eyebrow">Extended</p><h2>扩展字段</h2></div></div>
-          {extendedItems.length === 0 ? <p className="muted">暂无已验证扩展字段</p> : <DefinitionList items={extendedItems} />}
-        </section>
-      </section>
-
-      <section className="panel">
-        <div className="section-heading"><div><p className="eyebrow">Capability</p><h2>字段证据状态</h2></div><span className="section-note">不以 null 冒充 0</span></div>
-        <div className="capability-grid">
-          {Object.entries(snapshot.capabilities).map(([key, value]) => <span className={`capability-item capability-item--${value}`} key={key}><b>{key}</b><em>{capabilityText(value)}</em></span>)}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="section-heading"><div><p className="eyebrow">Event Timeline</p><h2>高铁事件</h2></div><span className="count-badge">{events.length}</span></div>
-        {events.length === 0 ? <p className="muted">暂无事件；需要连续快照后才会产生变化。</p> : (
-          <ol className="event-list">
-            {events.slice().reverse().map((item, index) => (
-              <li className={`event-item event-item--${eventTone(item.type)}`} key={`${item.timestamp}-${item.type}-${index}`}>
-                <time>{eventTime(item.timestamp)}</time>
-                <div><strong>{eventLabel(item.type)}</strong><span>{eventDetail(item)}</span></div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-    </main>
-  );
+export function DashboardPage(props: DashboardPageProps) {
+  const { snapshot, activeView, liveMonitoring, liveError, cached, onNavigate } = props;
+  if (snapshot === null) return <main className="app-shell"><header className="app-header"><div className="brand-line"><span className="brand-paw">●</span><span>CPE Huahua</span><i>read only</i></div><h1>等待本地快照</h1><p className="lede">先在探针页连接 Surge Bridge 并读取 H168。</p><button type="button" onClick={() => onNavigate("probe")}>打开探针</button></header>{liveError && <div className="error-banner">{liveError}</div>}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
+  return <main className="app-shell dashboard-shell"><PageHeader snapshot={snapshot} liveMonitoring={liveMonitoring} onToggleLive={props.onToggleLive} onProbe={() => onNavigate("probe")} />{liveError && <div className="error-banner dashboard-error">{liveError}</div>}{snapshot.source !== "live" && <div className="evidence-banner">当前为 {snapshot.source === "fixture" ? "fixture 参考" : "未知来源"}，不代表实机验证。</div>}{cached && <div className="evidence-banner evidence-banner--cached">正在显示浏览器保存的最近快照，启动实时后才会更新。</div>}{activeView === "overview" && <Overview snapshot={snapshot} history={props.history} events={props.events} networkProbeConfigured={props.networkProbeConfigured} />}{activeView === "cells" && <CellsPage snapshot={snapshot} />}{activeView === "events" && <EventsPage events={props.events} snapshot={snapshot} />}{activeView === "device" && <DevicePage snapshot={snapshot} cached={cached} onClearCache={props.onClearCache} />}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
 }

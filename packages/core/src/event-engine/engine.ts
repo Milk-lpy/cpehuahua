@@ -1,5 +1,6 @@
 import type { CpeEvent, CpeEventType, CpeEventValue } from "../types/event";
 import type { CpeSnapshot } from "../types/model";
+import { carrierAggregationLabel } from "../signal/cells";
 
 export interface EventEngineOptions {
   /** Packet-loss percentage at or above which an alarm is emitted. */
@@ -58,14 +59,6 @@ function changedScalar(
     return null;
   }
   return event(current, type, oldValue, newValue);
-}
-
-function aggregationLabel(snapshot: CpeSnapshot): string | null {
-  const cells = [snapshot.cells.pcc, ...snapshot.cells.scells];
-  if (cells.length === 0 || cells.some((cell) => cell === null || cell.band === null)) {
-    return null;
-  }
-  return cells.map((cell) => cell?.band ?? "").join(" + ");
 }
 
 function nrPresence(snapshot: CpeSnapshot): boolean | null {
@@ -184,8 +177,8 @@ export class EventEngine {
     if (pciChanged) events.push(pciChanged);
     if (bandChanged) events.push(bandChanged);
 
-    const previousCa = aggregationLabel(previous);
-    const currentCa = aggregationLabel(snapshot);
+    const previousCa = carrierAggregationLabel(previous);
+    const currentCa = carrierAggregationLabel(snapshot);
     if (previousCa !== null && currentCa !== null && previousCa !== currentCa) {
       events.push(event(snapshot, "CA_CHANGED", previousCa, currentCa));
     }

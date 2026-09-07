@@ -4,7 +4,7 @@
 Huawei / Brovi H168-383（鸿蒙智选 5G CPE Ultra 6），重点是移动场景中的蜂窝、
 小区、载波聚合、Internet 可达性和断流事件时间线。
 
-当前仓库处于研究与探针阶段。已经收到一台 H168-383 的真实 ProbeReport，并验证了
+当前仓库已进入只读实机监控阶段。已经收到一台 H168-383 的真实 ProbeReport，并验证了
 一批只读 endpoint；这不等于所有端点、字段和固件组合都已支持。没有实机返回证据
 的字段必须保持 `null`，能力状态必须保持 `unknown`；不会用其他指标填充。当前实机
 结论见 [docs/h168-findings.md](docs/h168-findings.md)。
@@ -17,13 +17,15 @@ Huawei / Brovi H168-383（鸿蒙智选 5G CPE Ultra 6），重点是移动场景
 - TypeScript strict 核心模型、XML 解析、H168 登录状态机基础和测试
 - H168 Probe 的端点清单、原始响应/脱敏响应契约和朴素 Probe 页面
 - 集中 `PollingEngine`、用户路径 `NetworkQualityTracker`、独立 `EventEngine` 及其测试
-- Dashboard shell、动态 PCC/SCell/Neighbor 展示、事件时间线和 PWA 离线壳
+- iPhone 优先的概览、小区、事件、设备、探针五页界面，动态 PCC/SCell/Neighbor
+  展示、流量统计、事件时间线和 PWA 离线壳
 - 实验性的 Surge 只读 Bridge：`/api/probe` 返回脱敏诊断，`/api/endpoint/<id>` 支持
   集中端点轮询，`/api/network-probe` 提供可选用户路径样本，`/api/live` 保留单次规范化
   快照回退
 
-本轮没有实现生产级全量字段支持或预置的 Internet 探测目标；用户可显式配置低负载
-HTTPS 用户路径探测。锁频、锁 PCI、锁小区、APN、重启 CPE 或其他写操作也不在范围内。
+本轮没有实现生产级全量字段支持；用户可显式配置自己的低负载 HTTPS 用户路径探测，
+也可主动选用 Apple 联网检测地址。锁频、锁 PCI、锁小区、短信写入、WLAN 修改、APN、
+重启 CPE 或其他写操作不在只读 V1 范围内。
 端点级路由已完成一批 H168-383 实机读取验证，但状态代码、复合 MCS/TX 字段、速率
 单位和 Session 复用细节仍需继续确认。
 

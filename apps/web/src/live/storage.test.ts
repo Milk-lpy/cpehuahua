@@ -29,13 +29,18 @@ function report(overrides: Partial<CpeLiveReport> = {}): CpeLiveReport {
     schemaVersion: 1,
     timestamp: "2026-09-05T08:00:00.000Z",
     source: "live" as const,
-    device: { model: "H168-383", firmware: null, uptimeSeconds: null },
+    device: {
+      model: "H168-383", productName: null, hardwareVersion: null, firmware: null,
+      webUiVersion: null, parameterVersion: null, uptimeSeconds: null,
+    },
     connection: {
       cellularOnline: true,
       internetOnline: null,
       radioMode: "5G" as const,
       saNsa: "SA" as const,
       plmn: "46000",
+      operatorName: null,
+      cellularStatusCode: "901",
     },
     radio: {
       band: "n78",
@@ -57,7 +62,7 @@ function report(overrides: Partial<CpeLiveReport> = {}): CpeLiveReport {
       txPowerDbm: null,
     },
     cells: { pcc: null, scells: [], neighbors: [] },
-    network: { pingMs: null, jitterMs: null, packetLossPct: null, downloadBps: null, uploadBps: null },
+    network: { pingMs: null, jitterMs: null, packetLossPct: null, downloadBps: null, uploadBps: null, currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null, totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null },
     extended: {
       temperatureC: null,
       fanRpm: null,

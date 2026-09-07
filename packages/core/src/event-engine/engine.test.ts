@@ -65,13 +65,23 @@ function snapshot(
     schemaVersion: 1,
     timestamp: `2026-09-05T00:00:${String(second).padStart(2, "0")}.000Z`,
     source: "fixture",
-    device: { model: "fixture", firmware: "fixture", uptimeSeconds: null },
+    device: {
+      model: "fixture",
+      productName: null,
+      hardwareVersion: null,
+      firmware: "fixture",
+      webUiVersion: null,
+      parameterVersion: null,
+      uptimeSeconds: null,
+    },
     connection: {
       cellularOnline: overrides.cellularOnline === undefined ? true : overrides.cellularOnline,
       internetOnline: overrides.internetOnline === undefined ? true : overrides.internetOnline,
       radioMode: overrides.radioMode ?? "5G",
       saNsa: overrides.saNsa ?? "SA",
       plmn: "46000",
+      operatorName: null,
+      cellularStatusCode: "901",
     },
     radio: {
       rsrpDbm: -90,
@@ -99,6 +109,8 @@ function snapshot(
       packetLossPct: overrides.packetLossPct ?? 0,
       downloadBps: null,
       uploadBps: null,
+      currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null,
+      totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null,
     },
     extended: {
       temperatureC: null,

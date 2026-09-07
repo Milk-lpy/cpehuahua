@@ -31,6 +31,17 @@ describe("Huawei XML parser", () => {
     expect(findHuaweiField(missing, ["not-present"])).toBeUndefined();
   });
 
+  it("honors requested alias priority instead of XML document order", () => {
+    const parsed = parseHuaweiXml(
+      "<response><band>40MHz@428910(N1)</band><bandInfo>N1</bandInfo>"
+        + "<cqi0></cqi0><nrcqi0>8</nrcqi0></response>",
+    );
+
+    expect(textOfHuaweiField(parsed, ["bandInfo", "band"])).toBe("N1");
+    expect(textOfHuaweiField(parsed, ["nrcqi0", "cqi0"])).toBe("8");
+    expect(textOfHuaweiField(parsed, ["cqi0", "nrcqi0"])).toBe("8");
+  });
+
   it("extracts Huawei error codes without throwing", () => {
     const parsed = parseHuaweiXml(fixture("error-125003.xml"));
 

@@ -19,15 +19,21 @@ function snapshot(timestamp: string): CpeSnapshot {
     schemaVersion: 1,
     timestamp,
     source: "live",
-    device: { model: "fixture", firmware: null, uptimeSeconds: null },
-    connection: { cellularOnline: true, internetOnline: null, radioMode: "unknown", saNsa: "unknown", plmn: null },
+    device: {
+      model: "fixture", productName: null, hardwareVersion: null, firmware: null,
+      webUiVersion: null, parameterVersion: null, uptimeSeconds: null,
+    },
+    connection: {
+      cellularOnline: true, internetOnline: null, radioMode: "unknown", saNsa: "unknown", plmn: null,
+      operatorName: null, cellularStatusCode: "901",
+    },
     radio: {
       rsrpDbm: null, rsrqDb: null, sinrDb: null, rssiDbm: null, pci: null, cellId: null,
       tac: null, band: null, arfcn: null, bandwidth: null, rrcStatus: null,
       cqi: null, mimoRank: null, dlMcs: null, ulMcs: null, blerPct: null, txPowerDbm: null,
     },
     cells: { pcc: null, scells: [], neighbors: [] },
-    network: { pingMs: null, jitterMs: null, packetLossPct: null, downloadBps: null, uploadBps: null },
+    network: { pingMs: null, jitterMs: null, packetLossPct: null, downloadBps: null, uploadBps: null, currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null, totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null },
     extended: {
       temperatureC: null, fanRpm: null, cpuUsagePct: null, memoryUsagePct: null,
       qci: null, fiveQi: null, dlAmbr: null, ulAmbr: null,

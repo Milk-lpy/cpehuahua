@@ -1,4 +1,4 @@
-import type { CpeEvent, CpeEventValue, CpeSnapshot } from "@cpehuahua/core";
+import { carrierAggregationLabel, type CpeEvent, type CpeEventValue, type CpeSnapshot } from "@cpehuahua/core";
 
 export type DashboardMetricId =
   | "rsrpDbm"
@@ -75,9 +75,7 @@ export function statusClass(value: boolean | null): string {
 }
 
 export function aggregationLabel(snapshot: CpeSnapshot): string {
-  const cells = [snapshot.cells.pcc, ...snapshot.cells.scells];
-  if (cells.length === 0) return "—";
-  return cells.map((cell) => cell?.band ?? "—").join(" + ");
+  return carrierAggregationLabel(snapshot) ?? "—";
 }
 
 export function eventValue(value: CpeEventValue): string {

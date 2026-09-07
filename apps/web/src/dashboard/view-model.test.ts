@@ -29,13 +29,18 @@ function snapshot(second: number, sinrDb: number | null): CpeSnapshot {
     schemaVersion: 1,
     timestamp: `2026-09-05T00:00:${String(second).padStart(2, "0")}.000Z`,
     source: "fixture",
-    device: { model: "fixture", firmware: null, uptimeSeconds: null },
+    device: {
+      model: "fixture", productName: null, hardwareVersion: null, firmware: null,
+      webUiVersion: null, parameterVersion: null, uptimeSeconds: null,
+    },
     connection: {
       cellularOnline: true,
       internetOnline: null,
       radioMode: "5G",
       saNsa: "SA",
       plmn: null,
+      operatorName: null,
+      cellularStatusCode: "901",
     },
     radio,
     cells: {
@@ -52,6 +57,8 @@ function snapshot(second: number, sinrDb: number | null): CpeSnapshot {
       packetLossPct: 0,
       downloadBps: null,
       uploadBps: null,
+      currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null,
+      totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null,
     },
     extended: {
       temperatureC: null,
@@ -86,7 +93,7 @@ function snapshot(second: number, sinrDb: number | null): CpeSnapshot {
 
 describe("dashboard view model", () => {
   it("shows dynamic PCC and SCell composition without a fixed cell count", () => {
-    expect(aggregationLabel(snapshot(0, 18))).toBe("n78 + n1 + n78");
+    expect(aggregationLabel(snapshot(0, 18))).toBe("n78 + n1");
   });
 
   it("keeps null chart samples as gaps", () => {

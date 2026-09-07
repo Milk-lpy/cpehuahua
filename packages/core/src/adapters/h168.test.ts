@@ -121,19 +121,30 @@ describe("H168 adapter", () => {
         "device-information": result(
           "device-information",
           "<response><DeviceName>H168-383</DeviceName>"
+            + "<HardwareVersion>WL1H168M</HardwareVersion>"
             + "<SoftwareVersion>4.4.0.1(H1008SP7C233)</SoftwareVersion>"
+            + "<WebUIVersion>WEBUI 4.4.0.1(W2SP7C233)</WebUIVersion>"
+            + "<ParameterVersion>scfullv2-2026.0625.01</ParameterVersion>"
             + "<uptime>144</uptime><SerialNumber>[REDACTED]</SerialNumber></response>",
+        ),
+        "monitoring-status": result(
+          "monitoring-status",
+          "<response><ConnectionStatus>901</ConnectionStatus><CurrentNetworkTypeEx>111</CurrentNetworkTypeEx></response>",
+        ),
+        "net-current-plmn": result(
+          "net-current-plmn",
+          "<response><FullName>中国电信</FullName><Numeric>46011</Numeric><Rat>12</Rat></response>",
         ),
         "device-signal": result(
           "device-signal",
           "<response><mode>12</mode><pci>107</pci><cell_id>[REDACTED-CELL-ID]</cell_id>"
-            + "<tac>[REDACTED-TAC]</tac><bandInfo>N78</bandInfo><nrearfcn>627264</nrearfcn>"
+            + "<tac>[REDACTED-TAC]</tac><band>100MHz@627264(N78)</band><bandInfo>N78</bandInfo><nrearfcn>627264</nrearfcn>"
             + "<nrdlbandwidth>100MHz</nrdlbandwidth><rrc_status>1</rrc_status>"
             + "<nrrsrp>-70dBm</nrrsrp><nrrsrq>-11.0dB</nrrsrq><nrsinr>5dB</nrsinr>"
-            + "<nrrssi>-47dBm</nrrssi><nrcqi0>15</nrcqi0><nrrank>4</nrrank>"
+            + "<nrrssi>-47dBm</nrrssi><cqi0></cqi0><nrcqi0>15</nrcqi0><nrrank>4</nrrank>"
             + "<nrbler>0</nrbler><nrulmcs>NRmcsUpCarrier1:23@256QAM</nrulmcs>"
-            + "<nrdlmcs>NRmcsDownCarrier1Code0:0@QPSK</nrdlmcs>"
-            + "<nrtxpower>PPusch:-20dBm</nrtxpower></response>",
+            + "<dl_mcs></dl_mcs><nrdlmcs>NRmcsDownCarrier1Code0:0@QPSK</nrdlmcs>"
+            + "<txpower></txpower><nrtxpower>PPusch:-20dBm</nrtxpower></response>",
         ),
         "device-seccellinfo": result(
           "device-seccellinfo",
@@ -152,14 +163,24 @@ describe("H168 adapter", () => {
         ),
         "monitoring-traffic-statistics": result(
           "monitoring-traffic-statistics",
-          "<response><CurrentDownloadRate>47554</CurrentDownloadRate>"
-            + "<CurrentUploadRate>4281</CurrentUploadRate></response>",
+          "<response><CurrentConnectTime>120</CurrentConnectTime><CurrentDownload>33573685</CurrentDownload>"
+            + "<CurrentUpload>1154036</CurrentUpload><CurrentDownloadRate>47554</CurrentDownloadRate>"
+            + "<CurrentUploadRate>4281</CurrentUploadRate><TotalDownload>11493789936</TotalDownload>"
+            + "<TotalUpload>503731793</TotalUpload><TotalConnectTime>63041</TotalConnectTime></response>",
         ),
       },
     });
 
     expect(snapshot.device.firmware).toBe("4.4.0.1(H1008SP7C233)");
+    expect(snapshot.device.productName).toBe("5G CPE Ultra 6");
+    expect(snapshot.device.hardwareVersion).toBe("WL1H168M");
+    expect(snapshot.device.webUiVersion).toBe("WEBUI 4.4.0.1(W2SP7C233)");
+    expect(snapshot.device.parameterVersion).toBe("scfullv2-2026.0625.01");
     expect(snapshot.device.uptimeSeconds).toBe(144);
+    expect(snapshot.connection.cellularOnline).toBe(true);
+    expect(snapshot.connection.cellularStatusCode).toBe("901");
+    expect(snapshot.connection.operatorName).toBe("中国电信");
+    expect(snapshot.connection.plmn).toBe("46011");
     expect(snapshot.connection.saNsa).toBe("SA");
     expect(snapshot.cells.pcc?.technology).toBe("NR");
     expect(snapshot.cells.pcc?.pci).toBe(107);
@@ -174,6 +195,12 @@ describe("H168 adapter", () => {
     expect(snapshot.cells.neighbors).toHaveLength(6);
     expect(snapshot.network.downloadBps).toBe(47554 * 8);
     expect(snapshot.network.uploadBps).toBe(4281 * 8);
+    expect(snapshot.network.currentDownloadBytes).toBe(33573685);
+    expect(snapshot.network.currentUploadBytes).toBe(1154036);
+    expect(snapshot.network.totalDownloadBytes).toBe(11493789936);
+    expect(snapshot.network.totalUploadBytes).toBe(503731793);
+    expect(snapshot.network.currentConnectSeconds).toBe(120);
+    expect(snapshot.network.totalConnectSeconds).toBe(63041);
     expect(snapshot.radio.dlMcs).toBeNull();
     expect(snapshot.radio.txPowerDbm).toBeNull();
     expect(snapshot.radio.bandwidth).toBe("100MHz");
@@ -212,6 +239,20 @@ describe("H168 adapter", () => {
     expect(snapshot.capabilities.mcs).toBe("observed");
     expect(snapshot.capabilities.mimoRank).toBe("observed");
     expect(snapshot.capabilities.temperature).toBe("unknown");
+  });
+
+  it("keeps Huawei 100003 as unknown because it can be an authentication or permission failure", () => {
+    const denied = result(
+      "device-seccellinfo",
+      "<error><code>100003</code><message /></error>",
+      "huawei-error",
+    );
+    const snapshot = new H168Adapter().normalize(input({
+      source: "live",
+      endpointResults: { "device-seccellinfo": denied },
+    }));
+
+    expect(snapshot.capabilities.secondaryCells).toBe("unknown");
   });
 
   it("does not pretend that H155 is implemented", () => {

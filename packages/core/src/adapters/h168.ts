@@ -63,6 +63,16 @@ function booleanFrom(document: ParsedHuaweiXml | null, names: readonly string[])
   return null;
 }
 
+function cellularOnline(document: ParsedHuaweiXml | null): boolean | null {
+  const status = text(document, ["ConnectionStatus", "connectionstatus"]);
+  // Huawei HiLink implementations consistently define 901 as connected and
+  // 902/904 as disconnected/failed. Keep transitional/unknown codes null so
+  // the event engine does not invent an outage during connect/disconnect.
+  if (status === "901") return true;
+  if (status === "902" || status === "904") return false;
+  return booleanFrom(document, ["cellularonline", "cellularstatus"]);
+}
+
 function isSaMode(mode: string | null): boolean {
   return mode === "102" || mode === "12";
 }
@@ -220,7 +230,7 @@ function capability(
   if (input.source !== "live") return;
   if (result.status === "ok") {
     baseline[key] = "observed";
-  } else if (result.huaweiError?.code === 100002 || result.huaweiError?.code === 100003) {
+  } else if (result.huaweiError?.code === 100002) {
     baseline[key] = "unsupported";
   }
 }
@@ -230,13 +240,23 @@ function emptySnapshot(input: AdapterInput, capabilities: CapabilityMatrix): Cpe
     schemaVersion: 1,
     timestamp: input.timestamp,
     source: input.source,
-    device: { model: null, firmware: null, uptimeSeconds: null },
+    device: {
+      model: null,
+      productName: null,
+      hardwareVersion: null,
+      firmware: null,
+      webUiVersion: null,
+      parameterVersion: null,
+      uptimeSeconds: null,
+    },
     connection: {
       cellularOnline: null,
       internetOnline: null,
       radioMode: "unknown",
       saNsa: "unknown",
       plmn: null,
+      operatorName: null,
+      cellularStatusCode: null,
     },
     radio: emptyRadioMetrics(),
     cells: { pcc: null, scells: [], neighbors: [] },
@@ -246,6 +266,12 @@ function emptySnapshot(input: AdapterInput, capabilities: CapabilityMatrix): Cpe
       packetLossPct: null,
       downloadBps: null,
       uploadBps: null,
+      currentDownloadBytes: null,
+      currentUploadBytes: null,
+      totalDownloadBytes: null,
+      totalUploadBytes: null,
+      currentConnectSeconds: null,
+      totalConnectSeconds: null,
     },
     extended: emptyExtendedMetrics(),
     capabilities,
@@ -325,7 +351,8 @@ export class H168Adapter implements CpeAdapter {
     ];
     const status = documentFor(input, "monitoring-status");
     const traffic = documentFor(input, "monitoring-traffic-statistics");
-    const plmn = text(signal, ["plmn"]) ?? text(plmnDocument, ["plmn", "currentplmn", "current_plmn"]);
+    const plmn = text(signal, ["plmn"])
+      ?? text(plmnDocument, ["Numeric", "plmn", "currentplmn", "current_plmn"]);
     const result = emptySnapshot(input, capabilities);
     if (input.source === "live") {
       if (text(signal, ["nrcqi0", "nrcqi", "cqi0", "cqi"]) !== null) capabilities.cqi = "observed";
@@ -339,17 +366,24 @@ export class H168Adapter implements CpeAdapter {
     result.device = {
       model: text(basic, ["devicename", "DeviceName", "model", "modelname"])
         ?? text(deviceInfo, ["devicename", "DeviceName", "model", "modelname"]),
+      productName: text(basic, ["spreadname_zh", "spreadname_en"])
+        ?? text(deviceInfo, ["spreadname_zh", "spreadname_en"]),
+      hardwareVersion: text(deviceInfo, ["HardwareVersion"]),
       firmware: text(basic, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"])
         ?? text(deviceInfo, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"]),
+      webUiVersion: text(deviceInfo, ["WebUIVersion"]),
+      parameterVersion: text(deviceInfo, ["ParameterVersion"]),
       uptimeSeconds: number(basic, ["uptime", "UpTime", "uptimeseconds"])
         ?? number(deviceInfo, ["uptime", "UpTime", "uptimeseconds"]),
     };
     result.connection = {
-      cellularOnline: booleanFrom(status, ["cellularonline", "connectionstatus", "cellularstatus"]),
+      cellularOnline: cellularOnline(status),
       internetOnline: null,
       radioMode: radioMode(mode),
       saNsa: saNsa(mode),
       plmn,
+      operatorName: text(plmnDocument, ["FullName", "ShortName", "Spn"]),
+      cellularStatusCode: text(status, ["ConnectionStatus", "connectionstatus"]),
     };
     if (pcc) {
       const { role: _role, technology: _technology, ...radioMetrics } = pcc;
@@ -362,6 +396,12 @@ export class H168Adapter implements CpeAdapter {
       packetLossPct: null,
       downloadBps: rateBps(traffic, ["CurrentDownloadRate", "downloadrate"]),
       uploadBps: rateBps(traffic, ["CurrentUploadRate", "uploadrate"]),
+      currentDownloadBytes: number(traffic, ["CurrentDownload"]),
+      currentUploadBytes: number(traffic, ["CurrentUpload"]),
+      totalDownloadBytes: number(traffic, ["TotalDownload"]),
+      totalUploadBytes: number(traffic, ["TotalUpload"]),
+      currentConnectSeconds: number(traffic, ["CurrentConnectTime"]),
+      totalConnectSeconds: number(traffic, ["TotalConnectTime"]),
     };
     // Temperature/QCI/5QI/AMBR and other extended fields remain null until a
     // verified H168 read path is demonstrated by Probe data.

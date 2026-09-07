@@ -63,6 +63,27 @@ function normalizeCell(value: CpeCell): CpeCell {
 function normalizeSnapshot(value: CpeSnapshot): CpeSnapshot {
   return {
     ...value,
+    device: {
+      ...value.device,
+      productName: value.device.productName ?? null,
+      hardwareVersion: value.device.hardwareVersion ?? null,
+      webUiVersion: value.device.webUiVersion ?? null,
+      parameterVersion: value.device.parameterVersion ?? null,
+    },
+    connection: {
+      ...value.connection,
+      operatorName: value.connection.operatorName ?? null,
+      cellularStatusCode: value.connection.cellularStatusCode ?? null,
+    },
+    network: {
+      ...value.network,
+      currentDownloadBytes: value.network.currentDownloadBytes ?? null,
+      currentUploadBytes: value.network.currentUploadBytes ?? null,
+      totalDownloadBytes: value.network.totalDownloadBytes ?? null,
+      totalUploadBytes: value.network.totalUploadBytes ?? null,
+      currentConnectSeconds: value.network.currentConnectSeconds ?? null,
+      totalConnectSeconds: value.network.totalConnectSeconds ?? null,
+    },
     radio: {
       ...value.radio,
       bandwidth: value.radio.bandwidth ?? null,

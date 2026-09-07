@@ -13,9 +13,11 @@ import {
 } from "./live/storage";
 import { sanitizedProbeReport, toProbeRows } from "./probe/view-model";
 import { liveReportFromProbe } from "./live/probe-live";
+import { BottomNav, type AppView } from "./ui/BottomNav";
 
 const DEFAULT_BRIDGE_URL = "https://cpe-bridge.example.com/api/probe";
 const NETWORK_PROBE_INTERVAL_MS = 1_000;
+const APPLE_CONNECTIVITY_TEST_URL = "https://captive.apple.com/hotspot-detect.html";
 
 interface BridgeErrorPayload {
   error?: string;
@@ -144,12 +146,12 @@ function App() {
   const [report, setReport] = useState<ProbeReport | null>(null);
   const [liveReport, setLiveReport] = useState<CpeLiveReport | null>(() => loadPersistedLiveReport());
   const [restoredFromStorage, setRestoredFromStorage] = useState(() => liveReport !== null);
-  const [view, setView] = useState<"probe" | "dashboard">("probe");
+  const [view, setView] = useState<AppView>(() => liveReport === null ? "probe" : "overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [probeCopyState, setProbeCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [liveMonitoring, setLiveMonitoring] = useState(false);
-  const [liveError, setLiveError] = useState<string | null>(null);
+  const [liveErrors, setLiveErrors] = useState<Record<string, string>>({});
   const [password, setPassword] = useState("");
   const [rememberSession, setRememberSession] = useState(true);
   const [rememberPassword, setRememberPassword] = useState(false);
@@ -157,6 +159,7 @@ function App() {
   const livePasswordRef = useRef("");
 
   const rows = useMemo(() => (report === null ? [] : toProbeRows(report)), [report]);
+  const liveError = Object.values(liveErrors)[0] ?? null;
 
   useEffect(() => () => {
     liveSessionRef.current?.stop();
@@ -169,7 +172,7 @@ function App() {
       setLiveMonitoring(false);
       return;
     }
-    setLiveError(null);
+    setLiveErrors({});
     const client = new H168EndpointClient(bridgeUrl, {
       getPassword: () => livePasswordRef.current,
       rememberSession: () => rememberSession,
@@ -189,19 +192,30 @@ function App() {
         setLiveReport(update);
         setRestoredFromStorage(false);
         savePersistedLiveReport(update);
+        setLiveErrors((current) => {
+          if (!("bridge" in current)) return current;
+          const next = { ...current };
+          delete next.bridge;
+          return next;
+        });
         setLiveMonitoring(true);
-        setView("dashboard");
+        setView("overview");
       },
       onEndpointResult: (result) => {
         if (!LIVE_CORE_ENDPOINTS.has(result.endpoint.id)) return;
         if (result.status === "ok") {
-          if (result.endpoint.id === "device-signal") setLiveError(null);
+          setLiveErrors((current) => {
+            if (!(result.endpoint.id in current)) return current;
+            const next = { ...current };
+            delete next[result.endpoint.id];
+            return next;
+          });
           return;
         }
-        setLiveError(liveEndpointError(result));
+        setLiveErrors((current) => ({ ...current, [result.endpoint.id]: liveEndpointError(result) }));
       },
       onError: (cause) => {
-        setLiveError(cause instanceof Error ? cause.message : "实时 Bridge 读取失败");
+        setLiveErrors((current) => ({ ...current, bridge: cause instanceof Error ? cause.message : "实时 Bridge 读取失败" }));
       },
     });
     liveSessionRef.current = session;
@@ -253,7 +267,7 @@ function App() {
         setRestoredFromStorage(false);
         savePersistedLiveReport(payload);
         setReport(null);
-        setView("dashboard");
+        setView("overview");
         return;
       }
 
@@ -297,9 +311,10 @@ function App() {
     setRestoredFromStorage(false);
   }
 
-  if (view === "dashboard") {
+  if (view !== "probe") {
     return (
       <DashboardPage
+        activeView={view}
         snapshot={liveReport?.snapshot ?? null}
         history={liveReport?.history ?? []}
         events={liveReport?.events ?? []}
@@ -308,14 +323,14 @@ function App() {
         liveError={liveError}
         networkProbeConfigured={networkProbeUrl.trim().length > 0}
         onToggleLive={toggleLiveMonitoring}
-        onBackToProbe={() => setView("probe")}
+        onNavigate={setView}
         onClearCache={clearCachedLiveReport}
       />
     );
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell probe-shell">
       <header className="page-header">
         <div>
           <p className="eyebrow">CPE Huahua / cpehuahua</p>
@@ -326,7 +341,7 @@ function App() {
         </div>
         <div className="header-actions">
           <span className="stage-badge">Probe skeleton</span>
-          <button className="secondary-button" type="button" onClick={() => setView("dashboard")}>Dashboard</button>
+          <button className="secondary-button" type="button" onClick={() => setView("overview")}>概览</button>
         </div>
       </header>
 
@@ -391,6 +406,16 @@ function App() {
           spellCheck={false}
           placeholder="https://你的低负载探测地址/health"
         />
+        <button
+          className="preset-button"
+          type="button"
+          onClick={() => {
+            setNetworkProbeUrl(APPLE_CONNECTIVITY_TEST_URL);
+            saveNetworkProbeUrl(APPLE_CONNECTIVITY_TEST_URL);
+          }}
+        >
+          使用 Apple 联网检测地址
+        </button>
         <p className="helper-text">
           不填写时 Internet、Ping、Loss、Jitter 保持 null。填写后由 Surge 在本地访问该 HTTPS 地址；记录的是用户路径 HTTP 延迟，不是 ICMP Ping。
         </p>
@@ -457,6 +482,7 @@ function App() {
         <span>V1 目标：Huawei / Brovi H168-383</span>
         <span>实时数据必须来自 iPhone ↔ Surge ↔ H168 本地链路</span>
       </footer>
+      <BottomNav active="probe" onNavigate={setView} />
     </main>
   );
 }

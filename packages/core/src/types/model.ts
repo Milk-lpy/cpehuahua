@@ -30,7 +30,11 @@ export type SaNsaMode = "SA" | "NSA" | "unknown";
 
 export interface DeviceIdentity {
   model: Nullable<string>;
+  productName: Nullable<string>;
+  hardwareVersion: Nullable<string>;
   firmware: Nullable<string>;
+  webUiVersion: Nullable<string>;
+  parameterVersion: Nullable<string>;
   uptimeSeconds: Nullable<number>;
 }
 
@@ -53,6 +57,9 @@ export interface ConnectionState {
   radioMode: RadioMode;
   saNsa: SaNsaMode;
   plmn: Nullable<string>;
+  operatorName: Nullable<string>;
+  /** Raw Huawei ConnectionStatus code retained for diagnostics. */
+  cellularStatusCode: Nullable<string>;
 }
 
 export interface RadioMetrics {
@@ -96,6 +103,12 @@ export interface NetworkMetrics {
   packetLossPct: Nullable<number>;
   downloadBps: Nullable<number>;
   uploadBps: Nullable<number>;
+  currentDownloadBytes: Nullable<number>;
+  currentUploadBytes: Nullable<number>;
+  totalDownloadBytes: Nullable<number>;
+  totalUploadBytes: Nullable<number>;
+  currentConnectSeconds: Nullable<number>;
+  totalConnectSeconds: Nullable<number>;
 }
 
 /** Reserved fields remain null until a supported read path is verified. */

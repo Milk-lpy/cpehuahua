@@ -185,15 +185,15 @@ Developer/AT 候选端点进行同样的循环重试。
 5. `MarvenAPPS/5g-cpe-signal-monitor` 当前 README 的测试设备是 H155-381、H153-381
    和 D-Link，不是 H168-383；其 MCS/CQI/MIMO/Tx Power 样例不能直接标为 H168 支持。
 6. 两组 H168 实机样本的 `seccellinfo` 都返回 1 条 NR 记录，且该记录与 PCC 的关键
-   标识接近；在确认其真实语义前，前端应显示“设备报告的 SCell 列表”，不要自动去重
-   或把数量解释为独立载波数量。
+   标识相同；原始 SCell 数组继续保留，展示层会标注“与 PCC 身份一致，CA 语义待确认”，
+   并且不会把镜像记录重复计入聚合标签。
 
 ## 端点证据表
 
 | Endpoint | 来源状态 | 当前处理 |
 | --- | --- | --- |
 | `/api/device/basic_information` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；已观察设备身份和基础 key，其他值仍以实际响应为准 |
-| `/api/monitoring/status` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；保留实际 key，不从状态代码或 `SignalIcon` 猜蜂窝状态 |
+| `/api/monitoring/status` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；`ConnectionStatus=901` 依据多份 HiLink 实现映射为已连接，其他未知/过渡代码仍保持 null |
 | `/api/net/current-plmn` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；保留 `FullName`/`Numeric`/`Rat`/`State` 原始值，代码含义待确认 |
 | `/api/device/signal` | `live-observed` H168-383 实机 HTTP 200 | 已观察 `mode=12`、通用 PCI/Cell/TAC、NR 测量和复合 MCS/TX 字段；复合值不压成单值 |
 | `/api/monitoring/traffic-statistics` | `live-observed` H168-383 实机 HTTP 200 | 已观察当前/累计流量和速率；单位与用户路径吞吐仍待交叉确认 |
@@ -208,6 +208,10 @@ Developer/AT 候选端点进行同样的循环重试。
 | `/api/device/information` | `live-observed` H168-383 实机 HTTP 200 | 已观察设备/软件/运行时间字段；敏感字段只保留脱敏值 |
 | `/api/user/state-login` | `live-observed` H168-383 实机 HTTP 200 | 已观察登录状态响应字段；不把账号状态码猜成在线状态 |
 | `/api/net/cell-info` | `live-observed` H168-383 实机 HTTP 200 | 已观察 `cellinfo`/`lac`，仍按 candidate 处理 |
+| `/api/monitoring/month_statistics` | `reference-candidate` | 新增只读 Probe 候选，未收到 H168 返回前不进入正式模型 |
+| `/api/wlan/host-list` | `reference-candidate` | 新增只读 Probe 候选；地址字段按敏感数据脱敏 |
+| `/api/monitoring/check-notifications` | `reference-candidate` | 新增只读 Probe 候选，只验证通知计数形状 |
+| `/api/sms/sms-count` | `reference-candidate` | 新增只读 Probe 候选；不实现短信列表 POST、发送、删除或设为已读 |
 
 ## 字段状态
 
@@ -254,8 +258,8 @@ nrulbandwidth nrdlbandwidth rrc_status nrulmcs nrdlmcs nrtxpower
 - `challenge_login` 与 `authentication_login` 是否都要求 `loginflag=2`
 - 监控 API 是否在蜂窝在线但 Internet 不可达时仍返回成功；InternetOnline 必须由
   iPhone/Surge 侧连续探测判断
-- `ConnectionStatus=901`、`ServiceStatus=2`、`CurrentNetworkType=20`、`Rat=12` 等
-  数值代码的官方/多样本语义；在此之前 CellularOnline 继续保持 `null`
+- `ServiceStatus=2`、`CurrentNetworkType=20`、`Rat=12` 等其余数值代码的官方/多样本
+  语义；未确认代码不参与在线状态推断
 - 邻区和 SCell 在切换、LTE-only、NSA 和多载波场景下的列表数量与空值约定
 - `nrseccell_list` 与 PCC 的关系：当前两组样本都出现相近的单条记录，需用明确 CA
   场景确认是否为 PCC 镜像、当前辅载波或设备端的统一 cell 列表

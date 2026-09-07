@@ -200,7 +200,7 @@ export function parseHuaweiXml(rawXml: string): ParsedHuaweiXml {
   }
 }
 
-/** Return the first matching field from the parsed response, case-insensitively. */
+/** Return the first requested field from the parsed response, case-insensitively. */
 export function findHuaweiField(
   document: ParsedHuaweiXml | null,
   names: readonly string[],
@@ -208,15 +208,28 @@ export function findHuaweiField(
   if (!document) {
     return undefined;
   }
-  const wanted = new Set(names.map((name) => name.toLowerCase()));
-  return findValue(document.response, wanted);
+  // Alias order is semantic. H168 can return an empty generic key before a
+  // populated NR-specific key (for example `cqi0` before `nrcqi0`). Searching
+  // all aliases as one set made XML document order win and discarded the
+  // populated value. Resolve each requested alias in priority order instead.
+  for (const name of names) {
+    const found = findValue(document.response, new Set([name.toLowerCase()]));
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  return undefined;
 }
 
 export function textOfHuaweiField(
   document: ParsedHuaweiXml | null,
   names: readonly string[],
 ): string | null {
-  return textOf(findHuaweiField(document, names));
+  for (const name of names) {
+    const value = textOf(findHuaweiField(document, [name]));
+    if (value !== null) return value;
+  }
+  return null;
 }
 
 export function numberOfHuaweiField(
