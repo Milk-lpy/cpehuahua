@@ -2,6 +2,7 @@ import type { CpeHttpResponse } from "./http";
 import type { ParsedHuaweiXml, HuaweiError } from "./xml";
 
 export type ProbeEvidence =
+  | "h168-live-observed"
   | "h168-reference-claimed"
   | "reference-shape"
   | "login-protocol"

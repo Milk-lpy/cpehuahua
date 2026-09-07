@@ -19,6 +19,14 @@ class FakeProbeTransport implements CpeHttpTransport {
 }
 
 describe("Probe collector", () => {
+  it("requires a bound session before reading monitoring status on H168", () => {
+    const status = H168_PROBE_ENDPOINTS.find((item) => item.id === "monitoring-status");
+    const basic = H168_PROBE_ENDPOINTS.find((item) => item.id === "device-basic-information");
+
+    expect(basic?.requiresAuth).toBe(false);
+    expect(status?.requiresAuth).toBe(true);
+  });
+
   it("records raw XML, Huawei errors, keys, latency and a sanitized copy", async () => {
     const transport = new FakeProbeTransport();
     const endpoints = H168_PROBE_ENDPOINTS.filter((item) => ["monitoring-status", "device-signal"].includes(item.id));

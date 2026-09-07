@@ -229,6 +229,58 @@ describe("H168 adapter", () => {
     expect(snapshot.capabilities.signal).toBe("unknown");
   });
 
+  it("normalizes the newly observed monthly traffic, WLAN hosts and SMS summaries", () => {
+    const snapshot = new H168Adapter().normalize(input({
+      source: "live",
+      endpointResults: {
+        "monitoring-month-statistics": result(
+          "monitoring-month-statistics",
+          "<response><CurrentMonthDownload>16365211440</CurrentMonthDownload>"
+            + "<CurrentMonthUpload>1427194145</CurrentMonthUpload><MonthDuration>75035</MonthDuration>"
+            + "<MonthLastClearTime>2026-09-06</MonthLastClearTime><CurrentDayUsed>7916159831</CurrentDayUsed>"
+            + "<CurrentDayDuration>51888</CurrentDayDuration></response>",
+        ),
+        "wlan-host-list": result(
+          "wlan-host-list",
+          "<response><Hosts><Host><Frequency>5GHz</Frequency><IdentifyType>Android</IdentifyType>"
+            + "<MacAddress>[REDACTED]</MacAddress><AssociatedSsid>super_5GHz_1</AssociatedSsid>"
+            + "<IpAddress>[REDACTED]</IpAddress><AssociatedTime>7081</AssociatedTime>"
+            + "<ActualName>Y700</ActualName><HostName>Y700</HostName></Host>"
+            + "<Host><Frequency>5GHz</Frequency><IdentifyBrands>Apple</IdentifyBrands>"
+            + "<IdentifyType>mobile</IdentifyType><AssociatedTime>12050</AssociatedTime>"
+            + "<ActualName>iPhone</ActualName></Host></Hosts></response>",
+        ),
+        "monitoring-check-notifications": result(
+          "monitoring-check-notifications",
+          "<response><UnreadMessage>0</UnreadMessage><SmsStorageFull>0</SmsStorageFull></response>",
+        ),
+        "sms-count": result(
+          "sms-count",
+          "<response><LocalUnread>0</LocalUnread><LocalInbox>2</LocalInbox><LocalOutbox>0</LocalOutbox>"
+            + "<LocalDraft>0</LocalDraft><LocalDeleted>0</LocalDeleted><LocalMax>500</LocalMax>"
+            + "<SimUnread>0</SimUnread><SimInbox>0</SimInbox><SimMax>0</SimMax><SimUsed>0</SimUsed>"
+            + "<NewMsg>0</NewMsg></response>",
+        ),
+      },
+    }));
+
+    expect(snapshot.network.monthDownloadBytes).toBe(16365211440);
+    expect(snapshot.network.monthUploadBytes).toBe(1427194145);
+    expect(snapshot.network.monthDurationSeconds).toBe(75035);
+    expect(snapshot.network.monthLastClearDate).toBe("2026-09-06");
+    expect(snapshot.network.dayUsedBytes).toBe(7916159831);
+    expect(snapshot.network.dayDurationSeconds).toBe(51888);
+    expect(snapshot.clients).toHaveLength(2);
+    expect(snapshot.clients[0]).toMatchObject({ name: "Y700", frequency: "5GHz", associatedSeconds: 7081 });
+    expect(snapshot.clients[0]?.ipAddress).toBeNull();
+    expect(snapshot.clients[0]?.macAddress).toBeNull();
+    expect(snapshot.clients[1]).toMatchObject({ name: "iPhone", manufacturer: "Apple" });
+    expect(snapshot.messaging).toMatchObject({ unread: 0, inbox: 2, capacity: 500, storageFull: false });
+    expect(snapshot.capabilities.monthlyTraffic).toBe("observed");
+    expect(snapshot.capabilities.clients).toBe("observed");
+    expect(snapshot.capabilities.sms).toBe("observed");
+  });
+
   it("only marks endpoint and advanced capabilities observed for live evidence", () => {
     const snapshot = new H168Adapter().normalize(input({ source: "live" }));
 

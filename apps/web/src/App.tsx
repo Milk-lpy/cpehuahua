@@ -61,11 +61,14 @@ const LIVE_CORE_ENDPOINTS = new Set([
   "device-seccellinfo",
   "device-nbrcellinfo",
   "monitoring-traffic-statistics",
+  "monitoring-month-statistics",
+  "wlan-host-list",
+  "monitoring-check-notifications",
+  "sms-count",
 ]);
 
-// Candidate/developer endpoints are useful for Probe diagnostics but should
-// not be part of the 1-second live loop. Keep the one-time device info read
-// for the device card and leave all exploratory reads in Probe only.
+// Verified read-only data endpoints participate at their own conservative
+// intervals. Developer/AT candidates remain Probe-only.
 const LIVE_ENDPOINTS = H168_PROBE_ENDPOINTS.filter((endpoint) => (
   LIVE_CORE_ENDPOINTS.has(endpoint.id) || endpoint.id === "device-information"
 ));

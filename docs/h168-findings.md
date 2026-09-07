@@ -168,6 +168,17 @@ H168 固件、网络制式或多载波场景都具备相同字段。Event Engine
 认证后仍为 `100003`，继续原样报告错误，不把 SCell 列表伪造成空数组，也不对
 Developer/AT 候选端点进行同样的循环重试。
 
+## 第六批只读功能证据（2026-09-07 07:09）
+
+新 Probe 首次确认了四个候选 GET 端点：月流量返回月下载、月上传、月/日使用时长、
+当日用量和上次清零日期；WLAN host list 返回 2 个在线终端及名称、类型、频段、SSID
+和接入时长；通知与短信计数返回收件箱 2、未读 0、容量 500 和存储未满。地址字段已被
+脱敏，规范化后保持 `null`，Dashboard 不保存 IP/MAC。
+
+同一报告中 `/api/monitoring/status` 在首次登录前返回 Huawei `125002`，但后续认证端点
+均成功，证明该固件上的状态接口需要已绑定会话。端点清单现将它标记为认证读取，使
+Probe/实时轮询在读取状态前完成登录；会话过期仍只进行一次密码支持的恢复，不循环重试。
+
 ## 已知差异
 
 1. 用户指定的 `lvcdy/huawei-lte-api-go` 当前仓库实际上是 Rust crate（`Cargo.toml`
@@ -208,10 +219,10 @@ Developer/AT 候选端点进行同样的循环重试。
 | `/api/device/information` | `live-observed` H168-383 实机 HTTP 200 | 已观察设备/软件/运行时间字段；敏感字段只保留脱敏值 |
 | `/api/user/state-login` | `live-observed` H168-383 实机 HTTP 200 | 已观察登录状态响应字段；不把账号状态码猜成在线状态 |
 | `/api/net/cell-info` | `live-observed` H168-383 实机 HTTP 200 | 已观察 `cellinfo`/`lac`，仍按 candidate 处理 |
-| `/api/monitoring/month_statistics` | `reference-candidate` | 新增只读 Probe 候选，未收到 H168 返回前不进入正式模型 |
-| `/api/wlan/host-list` | `reference-candidate` | 新增只读 Probe 候选；地址字段按敏感数据脱敏 |
-| `/api/monitoring/check-notifications` | `reference-candidate` | 新增只读 Probe 候选，只验证通知计数形状 |
-| `/api/sms/sms-count` | `reference-candidate` | 新增只读 Probe 候选；不实现短信列表 POST、发送、删除或设为已读 |
+| `/api/monitoring/month_statistics` | `live-observed` H168-383 实机 HTTP 200 | 已标准化月/日流量、使用时长和清零日期；60 秒只读轮询 |
+| `/api/wlan/host-list` | `live-observed` H168-383 实机 HTTP 200 | 已标准化在线终端名称/类型/频段/SSID/时长；IP/MAC 脱敏后为 null |
+| `/api/monitoring/check-notifications` | `live-observed` H168-383 实机 HTTP 200 | 已标准化未读和存储已满状态；10 秒只读轮询 |
+| `/api/sms/sms-count` | `live-observed` H168-383 实机 HTTP 200 | 已标准化邮箱计数/容量；不实现短信列表 POST、发送、删除或设为已读 |
 
 ## 字段状态
 

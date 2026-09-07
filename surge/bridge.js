@@ -26,6 +26,7 @@ const ALLOWED_WEB_ORIGINS = new Set([
 // explicit capability evidence and must not enter an auth loop.
 const REAUTH_ON_NO_RIGHTS_PATHS = new Set([
   "/api/device/signal",
+  "/api/monitoring/status",
   "/api/device/seccellinfo",
   "/api/device/nbrcellinfo",
   "/api/monitoring/traffic-statistics",
@@ -35,7 +36,7 @@ const REAUTH_ON_NO_RIGHTS_PATHS = new Set([
 
 const ENDPOINTS = [
   endpoint("device-basic-information", "Device basic information", "/api/device/basic_information", false, null, "h168-reference-claimed"),
-  endpoint("monitoring-status", "Monitoring status", "/api/monitoring/status", false, 2_000, "h168-reference-claimed"),
+  endpoint("monitoring-status", "Monitoring status", "/api/monitoring/status", true, 2_000, "h168-live-observed"),
   endpoint("net-current-plmn", "Current PLMN", "/api/net/current-plmn", false, 10_000, "h168-reference-claimed"),
   endpoint("device-signal", "Signal", "/api/device/signal", true, 1_000, "h168-reference-claimed"),
   endpoint("device-seccellinfo", "Secondary cells / CA", "/api/device/seccellinfo", true, 1_000, "reference-shape"),
@@ -48,10 +49,10 @@ const ENDPOINTS = [
   endpoint("developermode-developer-item", "Developer items (read-only candidate)", "/api/developermode/developer-item", true, null, "reference-shape"),
   endpoint("app-atport-status", "AT port status (GET only)", "/api/app/atport-status", true, null, "reference-shape"),
   endpoint("net-cell-info", "Generic cell info (candidate)", "/api/net/cell-info", true, null, "candidate"),
-  endpoint("monitoring-month-statistics", "Monthly traffic statistics (candidate)", "/api/monitoring/month_statistics", true, null, "candidate"),
-  endpoint("wlan-host-list", "Connected WLAN clients (candidate)", "/api/wlan/host-list", true, null, "candidate"),
-  endpoint("monitoring-check-notifications", "Notifications / unread SMS count (candidate)", "/api/monitoring/check-notifications", true, null, "candidate"),
-  endpoint("sms-count", "SMS mailbox counts (candidate)", "/api/sms/sms-count", true, null, "candidate"),
+  endpoint("monitoring-month-statistics", "Monthly traffic statistics", "/api/monitoring/month_statistics", true, 60_000, "h168-live-observed"),
+  endpoint("wlan-host-list", "Connected WLAN clients", "/api/wlan/host-list", true, 10_000, "h168-live-observed"),
+  endpoint("monitoring-check-notifications", "Notifications / unread SMS count", "/api/monitoring/check-notifications", true, 10_000, "h168-live-observed"),
+  endpoint("sms-count", "SMS mailbox counts", "/api/sms/sms-count", true, 10_000, "h168-live-observed"),
 ];
 
 const SENSITIVE_KEYS = new Set([
@@ -1036,6 +1037,9 @@ function emptyCapabilities() {
     secondaryCells: "unknown",
     neighbors: "unknown",
     traffic: "unknown",
+    monthlyTraffic: "unknown",
+    clients: "unknown",
+    sms: "unknown",
     temperature: "unknown",
     fan: "unknown",
     qci: "unknown",
@@ -1080,6 +1084,25 @@ function rateBps(rawXml, names) {
   return value === null ? null : value * 8;
 }
 
+function connectedClients(rawXml) {
+  if (!rawXml) return [];
+  return [...String(rawXml).matchAll(/<\s*Host(?:\s[^>]*)?>([\s\S]*?)<\s*\/\s*Host\s*>/gi)].map((match, index) => {
+    const host = match[1] || "";
+    return {
+      id: xmlText(host, ["ID"]) || `host-${index + 1}`,
+      name: xmlText(host, ["ActualName", "HostName"]),
+      hostName: xmlText(host, ["HostName"]),
+      manufacturer: xmlText(host, ["IdentifyBrands", "ActualManu"]),
+      deviceType: xmlText(host, ["IdentifyType", "ActualType"]),
+      frequency: xmlText(host, ["Frequency"]),
+      ssid: xmlText(host, ["AssociatedSsid"]),
+      associatedSeconds: xmlNumber(host, ["AssociatedTime"]),
+      ipAddress: null,
+      macAddress: null,
+    };
+  });
+}
+
 function normalizeLiveSnapshot(results) {
   const signal = rawResult(results, "device-signal");
   const basic = rawResult(results, "device-basic-information");
@@ -1089,6 +1112,10 @@ function normalizeLiveSnapshot(results) {
   const neighborsDocument = rawResult(results, "device-nbrcellinfo");
   const status = rawResult(results, "monitoring-status");
   const traffic = rawResult(results, "monitoring-traffic-statistics");
+  const monthTraffic = rawResult(results, "monitoring-month-statistics");
+  const hosts = rawResult(results, "wlan-host-list");
+  const notifications = rawResult(results, "monitoring-check-notifications");
+  const smsCount = rawResult(results, "sms-count");
   const mode = xmlText(signal, ["mode"]);
   const isSa = mode === "102" || mode === "12";
   const lte = metricSet(signal, false, false);
@@ -1126,6 +1153,9 @@ function normalizeLiveSnapshot(results) {
   markCapability(capabilities, results, "device-seccellinfo", "secondaryCells");
   markCapability(capabilities, results, "device-nbrcellinfo", "neighbors");
   markCapability(capabilities, results, "monitoring-traffic-statistics", "traffic");
+  markCapability(capabilities, results, "monitoring-month-statistics", "monthlyTraffic");
+  markCapability(capabilities, results, "wlan-host-list", "clients");
+  markCapability(capabilities, results, "sms-count", "sms");
   if (xmlText(signal, ["nrcqi0", "nrcqi", "cqi0", "cqi"]) !== null) capabilities.cqi = "observed";
   if (xmlText(signal, ["nrrank", "nrmimorank", "rank", "mimorank"]) !== null) capabilities.mimoRank = "observed";
   if (xmlText(signal, ["nrdlmcs", "nrulmcs", "nrumcs", "dl_mcs", "ul_mcs", "dlmcs", "ulmcs"]) !== null) capabilities.mcs = "observed";
@@ -1141,17 +1171,26 @@ function normalizeLiveSnapshot(results) {
     device: {
       model: xmlText(basic, ["devicename", "DeviceName", "model", "modelname"])
         || xmlText(deviceInfo, ["devicename", "DeviceName", "model", "modelname"]),
+      productName: xmlText(basic, ["spreadname_zh", "spreadname_en"])
+        || xmlText(deviceInfo, ["spreadname_zh", "spreadname_en"]),
+      hardwareVersion: xmlText(deviceInfo, ["HardwareVersion"]),
       firmware: xmlText(basic, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"])
         || xmlText(deviceInfo, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"]),
+      webUiVersion: xmlText(deviceInfo, ["WebUIVersion"]),
+      parameterVersion: xmlText(deviceInfo, ["ParameterVersion"]),
       uptimeSeconds: xmlNumber(basic, ["uptime", "UpTime", "uptimeseconds"])
         ?? xmlNumber(deviceInfo, ["uptime", "UpTime", "uptimeseconds"]),
     },
     connection: {
-      cellularOnline: xmlBoolean(status, ["cellularonline", "connectionstatus", "cellularstatus"]),
+      cellularOnline: xmlText(status, ["ConnectionStatus", "connectionstatus"]) === "901"
+        ? true
+        : xmlBoolean(status, ["cellularonline", "connectionstatus", "cellularstatus"]),
       internetOnline: null,
       radioMode: radioModeFor(mode),
       saNsa: saNsaFor(mode),
-      plmn: xmlText(signal, ["plmn"]) || xmlText(plmnDocument, ["plmn", "currentplmn", "current_plmn"]),
+      plmn: xmlText(signal, ["plmn"]) || xmlText(plmnDocument, ["Numeric", "plmn", "currentplmn", "current_plmn"]),
+      operatorName: xmlText(plmnDocument, ["FullName", "ShortName", "Spn"]),
+      cellularStatusCode: xmlText(status, ["ConnectionStatus", "connectionstatus"]),
     },
     radio,
     cells: { pcc, scells, neighbors },
@@ -1161,6 +1200,35 @@ function normalizeLiveSnapshot(results) {
       packetLossPct: null,
       downloadBps: rateBps(traffic, ["CurrentDownloadRate", "downloadrate"]),
       uploadBps: rateBps(traffic, ["CurrentUploadRate", "uploadrate"]),
+      currentDownloadBytes: xmlNumber(traffic, ["CurrentDownload"]),
+      currentUploadBytes: xmlNumber(traffic, ["CurrentUpload"]),
+      totalDownloadBytes: xmlNumber(traffic, ["TotalDownload"]),
+      totalUploadBytes: xmlNumber(traffic, ["TotalUpload"]),
+      currentConnectSeconds: xmlNumber(traffic, ["CurrentConnectTime"]),
+      totalConnectSeconds: xmlNumber(traffic, ["TotalConnectTime"]),
+      monthDownloadBytes: xmlNumber(monthTraffic, ["CurrentMonthDownload"]),
+      monthUploadBytes: xmlNumber(monthTraffic, ["CurrentMonthUpload"]),
+      monthDurationSeconds: xmlNumber(monthTraffic, ["MonthDuration"]),
+      monthLastClearDate: xmlText(monthTraffic, ["MonthLastClearTime"]),
+      dayUsedBytes: xmlNumber(monthTraffic, ["CurrentDayUsed"]),
+      dayDurationSeconds: xmlNumber(monthTraffic, ["CurrentDayDuration"]),
+    },
+    clients: connectedClients(hosts),
+    messaging: {
+      unread: xmlNumber(smsCount, ["LocalUnread"]) ?? xmlNumber(notifications, ["UnreadMessage"]),
+      inbox: xmlNumber(smsCount, ["LocalInbox"]),
+      outbox: xmlNumber(smsCount, ["LocalOutbox"]),
+      draft: xmlNumber(smsCount, ["LocalDraft"]),
+      deleted: xmlNumber(smsCount, ["LocalDeleted"]),
+      capacity: xmlNumber(smsCount, ["LocalMax"]),
+      simUnread: xmlNumber(smsCount, ["SimUnread"]),
+      simInbox: xmlNumber(smsCount, ["SimInbox"]),
+      simUsed: xmlNumber(smsCount, ["SimUsed"]),
+      simCapacity: xmlNumber(smsCount, ["SimMax"]),
+      newMessages: xmlNumber(smsCount, ["NewMsg"]),
+      storageFull: xmlText(notifications, ["SmsStorageFull"]) === null
+        ? null
+        : xmlText(notifications, ["SmsStorageFull"]) === "1",
     },
     extended: {
       temperatureC: null,

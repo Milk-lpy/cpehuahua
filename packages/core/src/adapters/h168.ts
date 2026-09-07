@@ -1,6 +1,7 @@
 import type { CpeAdapter, AdapterIdentification, AdapterInput } from "../types/adapter";
 import type {
   CpeCell,
+  CpeClient,
   CpeSnapshot,
   CapabilityMatrix,
   RadioMetrics,
@@ -10,7 +11,7 @@ import type { EndpointProbeResult } from "../types/probe";
 import { findHuaweiField, numberOfHuaweiField, textOfHuaweiField } from "../xml/parser";
 import { H168_PROBE_ENDPOINTS } from "../probe/endpoints";
 import { emptyCapabilities, emptyExtendedMetrics, emptyRadioMetrics } from "./helpers";
-import type { ParsedHuaweiXml } from "../types/xml";
+import type { HuaweiXmlObject, HuaweiXmlValue, ParsedHuaweiXml } from "../types/xml";
 
 const H168_NAMES = ["H168-383", "Huawei 5G CPE Ultra 6", "Brovi 5G CPE Ultra 6"] as const;
 
@@ -208,6 +209,49 @@ function numberFromText(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function objectValue(value: HuaweiXmlValue | undefined): HuaweiXmlObject | null {
+  return value !== undefined && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function directValue(object: HuaweiXmlObject | null, name: string): HuaweiXmlValue | undefined {
+  if (!object) return undefined;
+  const key = Object.keys(object).find((candidate) => candidate.toLowerCase() === name.toLowerCase());
+  return key === undefined ? undefined : object[key];
+}
+
+function directText(object: HuaweiXmlObject | null, name: string): string | null {
+  const value = directValue(object, name);
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized && normalized !== "[REDACTED]" ? normalized : null;
+}
+
+function directNumber(object: HuaweiXmlObject | null, name: string): number | null {
+  return numberFromText(directText(object, name));
+}
+
+function connectedClients(document: ParsedHuaweiXml | null): CpeClient[] {
+  const hosts = objectValue(directValue(document?.response ?? null, "Hosts"));
+  const rawHosts = directValue(hosts, "Host");
+  const list = Array.isArray(rawHosts) ? rawHosts : rawHosts === undefined ? [] : [rawHosts];
+  return list.flatMap((value) => {
+    const host = objectValue(value);
+    if (!host) return [];
+    return [{
+      id: directText(host, "ID"),
+      name: directText(host, "ActualName") ?? directText(host, "HostName"),
+      hostName: directText(host, "HostName"),
+      manufacturer: directText(host, "IdentifyBrands") ?? directText(host, "ActualManu"),
+      deviceType: directText(host, "IdentifyType") ?? directText(host, "ActualType"),
+      frequency: directText(host, "Frequency"),
+      ssid: directText(host, "AssociatedSsid"),
+      associatedSeconds: directNumber(host, "AssociatedTime"),
+      ipAddress: directText(host, "IpAddress"),
+      macAddress: directText(host, "MacAddress"),
+    }];
+  });
+}
+
 function rateBps(document: ParsedHuaweiXml | null, names: readonly string[]): number | null {
   const value = scalarNumber(document, names);
   // Huawei's Current*Rate is documented by the reference monitor as bytes/s.
@@ -272,6 +316,27 @@ function emptySnapshot(input: AdapterInput, capabilities: CapabilityMatrix): Cpe
       totalUploadBytes: null,
       currentConnectSeconds: null,
       totalConnectSeconds: null,
+      monthDownloadBytes: null,
+      monthUploadBytes: null,
+      monthDurationSeconds: null,
+      monthLastClearDate: null,
+      dayUsedBytes: null,
+      dayDurationSeconds: null,
+    },
+    clients: [],
+    messaging: {
+      unread: null,
+      inbox: null,
+      outbox: null,
+      draft: null,
+      deleted: null,
+      capacity: null,
+      simUnread: null,
+      simInbox: null,
+      simUsed: null,
+      simCapacity: null,
+      newMessages: null,
+      storageFull: null,
     },
     extended: emptyExtendedMetrics(),
     capabilities,
@@ -309,6 +374,9 @@ export class H168Adapter implements CpeAdapter {
     capability(capabilities, input, "device-seccellinfo", "secondaryCells");
     capability(capabilities, input, "device-nbrcellinfo", "neighbors");
     capability(capabilities, input, "monitoring-traffic-statistics", "traffic");
+    capability(capabilities, input, "monitoring-month-statistics", "monthlyTraffic");
+    capability(capabilities, input, "wlan-host-list", "clients");
+    capability(capabilities, input, "sms-count", "sms");
 
     const signal = documentFor(input, "device-signal");
     const basic = documentFor(input, "device-basic-information");
@@ -351,6 +419,10 @@ export class H168Adapter implements CpeAdapter {
     ];
     const status = documentFor(input, "monitoring-status");
     const traffic = documentFor(input, "monitoring-traffic-statistics");
+    const monthTraffic = documentFor(input, "monitoring-month-statistics");
+    const hostList = documentFor(input, "wlan-host-list");
+    const notifications = documentFor(input, "monitoring-check-notifications");
+    const smsCount = documentFor(input, "sms-count");
     const plmn = text(signal, ["plmn"])
       ?? text(plmnDocument, ["Numeric", "plmn", "currentplmn", "current_plmn"]);
     const result = emptySnapshot(input, capabilities);
@@ -402,6 +474,29 @@ export class H168Adapter implements CpeAdapter {
       totalUploadBytes: number(traffic, ["TotalUpload"]),
       currentConnectSeconds: number(traffic, ["CurrentConnectTime"]),
       totalConnectSeconds: number(traffic, ["TotalConnectTime"]),
+      monthDownloadBytes: number(monthTraffic, ["CurrentMonthDownload"]),
+      monthUploadBytes: number(monthTraffic, ["CurrentMonthUpload"]),
+      monthDurationSeconds: number(monthTraffic, ["MonthDuration"]),
+      monthLastClearDate: text(monthTraffic, ["MonthLastClearTime"]),
+      dayUsedBytes: number(monthTraffic, ["CurrentDayUsed"]),
+      dayDurationSeconds: number(monthTraffic, ["CurrentDayDuration"]),
+    };
+    result.clients = connectedClients(hostList);
+    result.messaging = {
+      unread: number(smsCount, ["LocalUnread"]) ?? number(notifications, ["UnreadMessage"]),
+      inbox: number(smsCount, ["LocalInbox"]),
+      outbox: number(smsCount, ["LocalOutbox"]),
+      draft: number(smsCount, ["LocalDraft"]),
+      deleted: number(smsCount, ["LocalDeleted"]),
+      capacity: number(smsCount, ["LocalMax"]),
+      simUnread: number(smsCount, ["SimUnread"]),
+      simInbox: number(smsCount, ["SimInbox"]),
+      simUsed: number(smsCount, ["SimUsed"]),
+      simCapacity: number(smsCount, ["SimMax"]),
+      newMessages: number(smsCount, ["NewMsg"]),
+      storageFull: text(notifications, ["SmsStorageFull"]) === null
+        ? null
+        : text(notifications, ["SmsStorageFull"]) === "1",
     };
     // Temperature/QCI/5QI/AMBR and other extended fields remain null until a
     // verified H168 read path is demonstrated by Probe data.

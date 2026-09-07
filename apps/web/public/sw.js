@@ -1,6 +1,6 @@
 // Bump this whenever the deployed app shell changes so an installed iPhone
 // PWA cannot keep serving an older JavaScript bundle indefinitely.
-const CACHE_NAME = "cpehuahua-shell-v7";
+const CACHE_NAME = "cpehuahua-shell-v8";
 const BASE_PATH = new URL("./", self.location).pathname;
 const API_PATH = BASE_PATH === "/" ? "/api/" : `${BASE_PATH}api/`;
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}index.html`, `${BASE_PATH}manifest.webmanifest`];

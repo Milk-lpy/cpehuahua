@@ -52,6 +52,7 @@ function isEndpointPayload(value: unknown): value is EndpointBridgePayload {
 
 const REAUTH_ON_NO_RIGHTS_ENDPOINTS = new Set([
   "device-signal",
+  "monitoring-status",
   "device-seccellinfo",
   "device-nbrcellinfo",
   "monitoring-traffic-statistics",

@@ -17,9 +17,11 @@ function snapshot(scells: CpeCell[]): CpeSnapshot {
     connection: { cellularOnline: true, internetOnline: null, radioMode: "5G", saNsa: "SA", plmn: null, operatorName: null, cellularStatusCode: "901" },
     radio,
     cells: { pcc, scells, neighbors: [] },
-    network: { pingMs: null, jitterMs: null, packetLossPct: null, downloadBps: null, uploadBps: null, currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null, totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null },
+    network: { pingMs: null, jitterMs: null, packetLossPct: null, downloadBps: null, uploadBps: null, currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null, totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null, monthDownloadBytes: null, monthUploadBytes: null, monthDurationSeconds: null, monthLastClearDate: null, dayUsedBytes: null, dayDurationSeconds: null },
+    clients: [],
+    messaging: { unread: null, inbox: null, outbox: null, draft: null, deleted: null, capacity: null, simUnread: null, simInbox: null, simUsed: null, simCapacity: null, newMessages: null, storageFull: null },
     extended: { temperatureC: null, fanRpm: null, cpuUsagePct: null, memoryUsagePct: null, qci: null, fiveQi: null, dlAmbr: null, ulAmbr: null },
-    capabilities: { signal: "observed", secondaryCells: "observed", neighbors: "unknown", traffic: "unknown", temperature: "unknown", fan: "unknown", qci: "unknown", fiveQi: "unknown", ambr: "unknown", cpu: "unknown", memory: "unknown", mcs: "observed", cqi: "observed", mimoRank: "observed", bler: "observed", txPower: "observed" },
+    capabilities: { signal: "observed", secondaryCells: "observed", neighbors: "unknown", traffic: "unknown", monthlyTraffic: "unknown", clients: "unknown", sms: "unknown", temperature: "unknown", fan: "unknown", qci: "unknown", fiveQi: "unknown", ambr: "unknown", cpu: "unknown", memory: "unknown", mcs: "observed", cqi: "observed", mimoRank: "observed", bler: "observed", txPower: "observed" },
   };
 }
 

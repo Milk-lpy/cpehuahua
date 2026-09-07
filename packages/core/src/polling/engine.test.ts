@@ -90,7 +90,11 @@ const adapter: CpeAdapter = {
       uploadBps: null,
       currentDownloadBytes: null, currentUploadBytes: null, totalDownloadBytes: null,
       totalUploadBytes: null, currentConnectSeconds: null, totalConnectSeconds: null,
+      monthDownloadBytes: null, monthUploadBytes: null, monthDurationSeconds: null,
+      monthLastClearDate: null, dayUsedBytes: null, dayDurationSeconds: null,
     },
+    clients: [],
+    messaging: { unread: null, inbox: null, outbox: null, draft: null, deleted: null, capacity: null, simUnread: null, simInbox: null, simUsed: null, simCapacity: null, newMessages: null, storageFull: null },
     extended: {
       temperatureC: null,
       fanRpm: null,

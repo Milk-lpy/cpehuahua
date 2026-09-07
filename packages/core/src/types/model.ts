@@ -8,6 +8,9 @@ export type CapabilityKey =
   | "secondaryCells"
   | "neighbors"
   | "traffic"
+  | "monthlyTraffic"
+  | "clients"
+  | "sms"
   | "temperature"
   | "fan"
   | "qci"
@@ -109,6 +112,40 @@ export interface NetworkMetrics {
   totalUploadBytes: Nullable<number>;
   currentConnectSeconds: Nullable<number>;
   totalConnectSeconds: Nullable<number>;
+  monthDownloadBytes: Nullable<number>;
+  monthUploadBytes: Nullable<number>;
+  monthDurationSeconds: Nullable<number>;
+  monthLastClearDate: Nullable<string>;
+  dayUsedBytes: Nullable<number>;
+  dayDurationSeconds: Nullable<number>;
+}
+
+export interface CpeClient {
+  id: Nullable<string>;
+  name: Nullable<string>;
+  hostName: Nullable<string>;
+  manufacturer: Nullable<string>;
+  deviceType: Nullable<string>;
+  frequency: Nullable<string>;
+  ssid: Nullable<string>;
+  associatedSeconds: Nullable<number>;
+  ipAddress: Nullable<string>;
+  macAddress: Nullable<string>;
+}
+
+export interface SmsSummary {
+  unread: Nullable<number>;
+  inbox: Nullable<number>;
+  outbox: Nullable<number>;
+  draft: Nullable<number>;
+  deleted: Nullable<number>;
+  capacity: Nullable<number>;
+  simUnread: Nullable<number>;
+  simInbox: Nullable<number>;
+  simUsed: Nullable<number>;
+  simCapacity: Nullable<number>;
+  newMessages: Nullable<number>;
+  storageFull: Nullable<boolean>;
 }
 
 /** Reserved fields remain null until a supported read path is verified. */
@@ -132,6 +169,8 @@ export interface CpeSnapshot {
   radio: RadioMetrics;
   cells: CellCollection;
   network: NetworkMetrics;
+  clients: CpeClient[];
+  messaging: SmsSummary;
   extended: ExtendedMetrics;
   capabilities: CapabilityMatrix;
 }
