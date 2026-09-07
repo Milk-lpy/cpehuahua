@@ -1,12 +1,12 @@
 # H168-383 Findings
 
-更新时间：2026-09-05
+更新时间：2026-09-07
 
 ## 当前结论
 
 ```yaml
 target_device: H168-383
-live_device_tested_in_this_repo: false
+live_device_tested_in_this_repo: true
 all_field_support_claims: false
 raw_h168_capture_present: false
 ```
@@ -14,6 +14,33 @@ raw_h168_capture_present: false
 本文件中的 `reference-claimed` 只表示可靠项目 README/变更记录的声明，
 `reference-shape` 只表示其他设备或 mock 里出现过的协议形状；两者都不能替代
 用户的 H168-383 实机返回数据。
+
+## 首次用户实机证据（2026-09-07）
+
+用户通过 iPhone Safari → Surge Bridge → H168 Wi-Fi 成功打开：
+
+```text
+https://cpe-bridge.example.com/api/probe
+```
+
+截图中的 ProbeReport 首个 endpoint 提供了以下可确认事实：
+
+- `adapterId` 为 `h168`
+- Surge 发现 IPv4 默认网关 `192.168.8.1`
+- `/api/device/basic_information` 返回 HTTP `200`，Probe status 为 `ok`
+- `huaweiError` 为 `null`，解析错误为 `null`
+- 请求延迟记录为 `81 ms`
+- 返回的 `devicename` 为 `H168-383`
+- 返回的英文/中文设备名均为 `5G CPE Ultra 6`
+- 首个 endpoint 的完整 XML 和 parsed 字段已经通过 Bridge 脱敏返回到浏览器
+
+这确认了：Surge MITM、远程 `bridge.js`、默认网关发现、H168 身份门和
+`basic_information` 读取链路已经在用户设备上实际跑通。
+
+这条截图没有包含其余 endpoint 卡片的完整结果，因此暂不据此确认
+`signal`、SCell、邻区、流量、登录 token 轮换或任何扩展字段的支持状态。
+完整结果仍应使用 Probe 页面的 `Copy Sanitized Result` 逐个提交；不要发送密码、
+Session、Token 或未脱敏 RAW XML。
 
 ## 已知差异
 
