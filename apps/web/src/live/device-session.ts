@@ -25,6 +25,7 @@ export interface DevicePollingOptions {
   now?: () => number;
   setTimeout?: (handler: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearTimeout?: (handle: ReturnType<typeof setTimeout>) => void;
+  onEndpointResult?: (result: EndpointProbeResult) => void;
   onUpdate?: (report: CpeLiveReport) => void;
   onError?: (error: unknown) => void;
 }
@@ -43,6 +44,7 @@ export class DevicePollingSession {
   private readonly networkQuality: NetworkQualityTracker;
   private readonly networkProbe: (() => Promise<NetworkProbeSample>) | undefined;
   private readonly getGateway: () => string | null;
+  private readonly onEndpointResult: ((result: EndpointProbeResult) => void) | undefined;
   private readonly onUpdate: ((report: CpeLiveReport) => void) | undefined;
   private readonly onError: ((error: unknown) => void) | undefined;
   private readonly history: CpeSnapshot[] = [];
@@ -60,6 +62,7 @@ export class DevicePollingSession {
     this.networkQuality = options.networkQuality ?? new NetworkQualityTracker();
     this.networkProbe = options.networkProbe;
     this.getGateway = options.getGateway ?? (() => options.gateway ?? null);
+    this.onEndpointResult = options.onEndpointResult;
     this.onUpdate = options.onUpdate;
     this.onError = options.onError;
     this.engine = new PollingEngine({
@@ -72,6 +75,7 @@ export class DevicePollingSession {
       ...(options.setTimeout !== undefined ? { setTimeout: options.setTimeout } : {}),
       ...(options.clearTimeout !== undefined ? { clearTimeout: options.clearTimeout } : {}),
       onEndpointResult: (result) => {
+        this.onEndpointResult?.(result);
         if (result.endpoint.id === "device-basic-information" && result.status === "transport-error") {
           this.onError?.(new Error(result.transportError ?? "Bridge 无法读取 H168"));
         }

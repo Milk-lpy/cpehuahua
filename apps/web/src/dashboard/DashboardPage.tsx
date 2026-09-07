@@ -225,6 +225,12 @@ export function DashboardPage({
         </div>
       )}
 
+      {!liveMonitoring && !cached && (
+        <div className="evidence-banner evidence-banner--cached">
+          当前显示最近一次本地快照；点击“启动实时”后，页面才会继续从 Surge Bridge 读取 H168。
+        </div>
+      )}
+
       <section className="panel dashboard-overview">
         <div className="overview-heading">
           <div>

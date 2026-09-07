@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CpeLiveReport, ProbeReport } from "@cpehuahua/core";
 import { H168_PROBE_ENDPOINTS } from "@cpehuahua/core";
+import type { CpeLiveReport, EndpointProbeResult, ProbeReport } from "@cpehuahua/core";
 import { DashboardPage } from "./dashboard/DashboardPage";
 import { H168EndpointClient } from "./live/endpoint-client";
 import { DevicePollingSession } from "./live/device-session";
@@ -12,6 +12,7 @@ import {
   savePersistedLiveReport,
 } from "./live/storage";
 import { sanitizedProbeReport, toProbeRows } from "./probe/view-model";
+import { liveReportFromProbe } from "./live/probe-live";
 
 const DEFAULT_BRIDGE_URL = "https://cpe-bridge.example.com/api/probe";
 
@@ -47,6 +48,26 @@ function isLiveReport(value: unknown): value is CpeLiveReport {
     && candidate.snapshot !== null
     && Array.isArray(candidate.history)
     && Array.isArray(candidate.events);
+}
+
+const LIVE_CORE_ENDPOINTS = new Set([
+  "device-basic-information",
+  "monitoring-status",
+  "net-current-plmn",
+  "device-signal",
+  "device-seccellinfo",
+  "device-nbrcellinfo",
+  "monitoring-traffic-statistics",
+]);
+
+function liveEndpointError(result: EndpointProbeResult): string {
+  const detail = result.transportError
+    ?? (result.huaweiError?.code === null || result.huaweiError?.code === undefined
+      ? null
+      : `Huawei error ${result.huaweiError.code}`)
+    ?? (result.httpStatus === null ? null : `HTTP ${result.httpStatus}`)
+    ?? "未返回可用数据";
+  return `${result.endpoint.label}读取失败：${detail}。请返回 Probe 输入密码并读取一次，或更新 Surge Module 后重试。`;
 }
 
 function EndpointCard({ row }: { row: ReturnType<typeof toProbeRows>[number] }) {
@@ -159,6 +180,14 @@ function App() {
         setLiveMonitoring(true);
         setView("dashboard");
       },
+      onEndpointResult: (result) => {
+        if (!LIVE_CORE_ENDPOINTS.has(result.endpoint.id)) return;
+        if (result.status === "ok") {
+          if (result.endpoint.id === "device-signal") setLiveError(null);
+          return;
+        }
+        setLiveError(liveEndpointError(result));
+      },
       onError: (cause) => {
         setLiveError(cause instanceof Error ? cause.message : "实时 Bridge 读取失败");
       },
@@ -221,8 +250,12 @@ function App() {
       }
 
       setReport(payload);
-      setLiveReport(null);
+      const initialLiveReport = liveReportFromProbe(payload);
+      setLiveReport(initialLiveReport);
       setRestoredFromStorage(false);
+      if (initialLiveReport !== null) {
+        savePersistedLiveReport(initialLiveReport);
+      }
       setView("probe");
       if (!rememberPassword) {
         setPassword("");

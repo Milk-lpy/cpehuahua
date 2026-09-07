@@ -59,6 +59,38 @@ function result(endpoint: ProbeEndpoint): EndpointProbeResult {
 }
 
 describe("DevicePollingSession", () => {
+  it("reports endpoint failures instead of silently producing an empty snapshot", async () => {
+    const failures: EndpointProbeResult[] = [];
+    const failingEndpoint: ProbeEndpoint = { ...endpoints[0]!, id: "device-signal", label: "Signal" };
+    const session = new DevicePollingSession(async (endpoint) => ({
+      ...result(endpoint),
+      status: "transport-error",
+      httpStatus: null,
+      transportError: "需要 H168 管理密码",
+      rawXml: "",
+      sanitizedRawXml: "",
+      parsed: null,
+      parsedFields: [],
+    }), {
+      adapter: {
+        id: "h168",
+        modelNames: ["fixture"],
+        probeEndpoints: [failingEndpoint],
+        baselineCapabilities: {} as CpeAdapter["baselineCapabilities"],
+        identify: () => ({ matched: true, confidence: "possible", reason: "test" }),
+        normalize: (input) => snapshot(new Date(input.timestamp).toISOString()),
+      },
+      endpoints: [failingEndpoint],
+      onEndpointResult: (failure) => failures.push(failure),
+    });
+
+    await session.pollNow();
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.status).toBe("transport-error");
+    expect(failures[0]?.transportError).toBe("需要 H168 管理密码");
+  });
+
   it("uses the core scheduler and wraps normalized snapshots", async () => {
     let clock = 0;
     let sequence = 0;
