@@ -1,6 +1,7 @@
 import type { CpeHttpRequest, CpeHttpResponse, CpeHttpTransport, HttpHeaders } from "../types/http";
 import { parseHuaweiXml, textOfHuaweiField } from "../xml/parser";
 import type { HuaweiError } from "../types/xml";
+import { hmacSha256Bytes, pbkdf2Sha256Bytes, sha256Bytes } from "./sha256";
 
 export type HuaweiAuthState =
   | "idle"
@@ -93,27 +94,44 @@ function stableBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-function cryptoSubtle(): SubtleCrypto {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error("Web Crypto API is unavailable");
-  }
-  return subtle;
-}
-
 async function sha256(data: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await cryptoSubtle().digest("SHA-256", stableBuffer(data)));
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return sha256Bytes(data);
+  return new Uint8Array(await subtle.digest("SHA-256", stableBuffer(data)));
 }
 
 async function hmacSha256(keyBytes: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
-  const key = await cryptoSubtle().importKey(
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return hmacSha256Bytes(keyBytes, data);
+  const key = await subtle.importKey(
     "raw",
     stableBuffer(keyBytes),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  return new Uint8Array(await cryptoSubtle().sign("HMAC", key, stableBuffer(data)));
+  return new Uint8Array(await subtle.sign("HMAC", key, stableBuffer(data)));
+}
+
+async function pbkdf2Sha256(
+  password: Uint8Array,
+  salt: Uint8Array,
+  iterations: number,
+): Promise<Uint8Array> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return pbkdf2Sha256Bytes(password, salt, iterations);
+  const passwordKey = await subtle.importKey(
+    "raw",
+    stableBuffer(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  return new Uint8Array(await subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: stableBuffer(salt), iterations },
+    passwordKey,
+    256,
+  ));
 }
 
 /** Huawei challenge/authentication proof used by the current reference flow. */
@@ -127,20 +145,10 @@ export async function computeHuaweiClientProof(
   if (!Number.isInteger(iterations) || iterations <= 0) {
     throw new Error("challenge iterations must be a positive integer");
   }
-  const subtle = cryptoSubtle();
-  const passwordKey = await subtle.importKey(
-    "raw",
-    stableBuffer(new TextEncoder().encode(password)),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const saltedPassword = new Uint8Array(
-    await subtle.deriveBits(
-      { name: "PBKDF2", hash: "SHA-256", salt: stableBuffer(bytesFromHex(saltHex)), iterations },
-      passwordKey,
-      256,
-    ),
+  const saltedPassword = await pbkdf2Sha256(
+    new TextEncoder().encode(password),
+    bytesFromHex(saltHex),
+    iterations,
   );
   // cpemanager's current Huawei flow uses the literal as the HMAC key and
   // the PBKDF2 result as the message; keep this order explicit.

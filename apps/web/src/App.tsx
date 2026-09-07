@@ -168,6 +168,12 @@ function App() {
   }
 
   async function loadProbe() {
+    // A probe report is a point-in-time diagnostic result. Clear the previous
+    // browser result before starting so a failed run cannot leave stale data visible.
+    setReport(null);
+    setLiveReport(null);
+    setRestoredFromStorage(false);
+    clearPersistedLiveReport();
     setLoading(true);
     setError(null);
 

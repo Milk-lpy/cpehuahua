@@ -42,6 +42,35 @@ https://cpe-bridge.example.com/api/probe
 完整结果仍应使用 Probe 页面的 `Copy Sanitized Result` 逐个提交；不要发送密码、
 Session、Token 或未脱敏 RAW XML。
 
+## 第二批用户实机证据（2026-09-07）
+
+用户从 H168-383 读取到以下实际结果。这里记录的是 endpoint、状态和字段证据，
+没有把包含网络地址的原始 XML 纳入仓库：
+
+- `/api/device/basic_information`：HTTP `200`、Probe status `ok`、延迟 `23 ms`、
+  Huawei error 为空。观察到 `devicename=H168-383`、`spreadname_en=5G CPE Ultra 6`、
+  `spreadname_zh=5G CPE Ultra 6`，以及 `classify`、`multimode`、
+  `restore_default_status`、`sim_save_pin_enable`。
+- `/api/monitoring/status`：HTTP `200`、Probe status `ok`、延迟 `19 ms`、
+  Huawei error 为空。实际返回了 `ConnectionStatus`、`CurrentNetworkType`、
+  `CurrentNetworkTypeEx`、`CurrentServiceDomain`、`ServiceStatus`、`SignalIcon`、
+  `SignalIconNr`、`SimStatus`、`WifiStatus`、`CurrentWifiUser`、`TotalWifiUser`、
+  `EndcStatus` 等字段；其中数值代码的含义仍未在 H168-383 上逐项确认，不据此
+  推导 Cellular/Internet online 或 RSRP。
+- `/api/net/current-plmn`：HTTP `200`、Probe status `ok`、延迟 `36 ms`、
+  Huawei error 为空。观察到 `FullName=中国电信`、`ShortName=中国电信`、
+  `Numeric=46011`、`Rat=12`、`State=0`；`Rat` 和 `State` 的具体代码含义仍待确认。
+- `/api/device/signal`：本次没有读到 H168 响应。Probe 的 transport error 是
+  `undefined is not an object (evaluating 'crypto.subtle.importKey')`，说明认证在
+  Surge WebView 的 Web Crypto 调用处中止；这不是 H168 返回的 Huawei error，也不能
+  作为 signal 字段不支持的证据。
+
+本批证据把前三个 endpoint 的 endpoint-level capability 从 `unknown` 提升为
+`observed`，但不提升任何 RSRP、SINR、Band、PCI、Cell ID、CA 或在线状态字段的
+supported 结论。加密 fallback 已加入代码并通过离线测试向量；仍需下一次真实 Probe
+确认 H168 challenge/authentication 是否成功，以及返回的实际 signal/SCell/neighbor
+数据。
+
 ## 已知差异
 
 1. 用户指定的 `lvcdy/huawei-lte-api-go` 当前仓库实际上是 Rust crate（`Cargo.toml`
@@ -63,9 +92,9 @@ Session、Token 或未脱敏 RAW XML。
 
 | Endpoint | 来源状态 | 当前处理 |
 | --- | --- | --- |
-| `/api/device/basic_information` | `reference-claimed` H168 未登录可读 | Probe 默认读取；模型字段仍以实际响应为准 |
-| `/api/monitoring/status` | `reference-claimed` H168 未登录可读 | Probe 默认读取；不从 `SignalIcon` 猜蜂窝状态 |
-| `/api/net/current-plmn` | `reference-claimed` H168 未登录可读 | Probe 默认读取；保留原始 PLMN |
+| `/api/device/basic_information` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；已观察设备身份和基础 key，其他值仍以实际响应为准 |
+| `/api/monitoring/status` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；保留实际 key，不从状态代码或 `SignalIcon` 猜蜂窝状态 |
+| `/api/net/current-plmn` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；保留 `FullName`/`Numeric`/`Rat`/`State` 原始值，代码含义待确认 |
 | `/api/device/signal` | `reference-claimed` H168 登录后可读 | Probe 默认读取；字段缺失为 `null` |
 | `/api/monitoring/traffic-statistics` | `reference-claimed` H168 登录后可读 | Probe 默认读取；不替代 iPhone 侧 Internet 状态 |
 | `/api/device/seccellinfo` | `reference-shape` Brovi 5G 补充端点 | Probe 默认读取但 capability 初始 `unknown` |
