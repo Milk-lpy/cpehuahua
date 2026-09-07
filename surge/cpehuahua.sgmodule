@@ -1,5 +1,5 @@
 #!name=CPE Huahua Bridge (GitHub)
-#!desc=Local H168-383 monitor and bounded control bridge; write compatibility is verified by device readback.
+#!desc=Local H168-383 monitor and bounded control bridge; write compatibility must be verified by device readback.
 #!system=ios
 
 [Script]
