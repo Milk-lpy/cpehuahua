@@ -11,7 +11,7 @@ import {
   loadPersistedLiveReport,
   savePersistedLiveReport,
 } from "./live/storage";
-import { toProbeRows } from "./probe/view-model";
+import { sanitizedProbeReport, toProbeRows } from "./probe/view-model";
 
 const DEFAULT_BRIDGE_URL = "https://cpe-bridge.example.com/api/probe";
 
@@ -118,6 +118,7 @@ function App() {
   const [view, setView] = useState<"probe" | "dashboard">("probe");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [probeCopyState, setProbeCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [liveMonitoring, setLiveMonitoring] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -174,6 +175,7 @@ function App() {
     setLiveReport(null);
     setRestoredFromStorage(false);
     clearPersistedLiveReport();
+    setProbeCopyState("idle");
     setLoading(true);
     setError(null);
 
@@ -230,6 +232,17 @@ function App() {
       setError(userFacingBridgeError(cause));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copyAllProbeResults() {
+    if (report === null) return;
+
+    try {
+      await navigator.clipboard.writeText(sanitizedProbeReport(report));
+      setProbeCopyState("copied");
+    } catch {
+      setProbeCopyState("failed");
     }
   }
 
@@ -363,7 +376,14 @@ function App() {
             <p className="eyebrow">Endpoints</p>
             <h2>只读探针清单</h2>
           </div>
-          <span className="count-badge">{report === null ? H168_PROBE_ENDPOINTS.length : rows.length}</span>
+          <div className="probe-tools">
+            {report !== null && (
+              <button className="copy-all-button" type="button" onClick={() => void copyAllProbeResults()}>
+                {probeCopyState === "copied" ? "已复制全部" : probeCopyState === "failed" ? "复制失败" : "复制本次全部"}
+              </button>
+            )}
+            <span className="count-badge">{report === null ? H168_PROBE_ENDPOINTS.length : rows.length}</span>
+          </div>
         </div>
         {report === null ? (
           <div className="empty-state">

@@ -3,6 +3,7 @@ import type {
   ProbeReport,
   ProbeResultStatus,
 } from "@cpehuahua/core";
+import { sanitizeHuaweiValue } from "@cpehuahua/core";
 
 export interface ProbeRow {
   id: string;
@@ -93,4 +94,33 @@ export function toProbeRows(report: ProbeReport): ProbeRow[] {
       }, null, 2),
     };
   });
+}
+
+/** Build one valid, sanitized JSON document for the complete current Probe run. */
+export function sanitizedProbeReport(report: ProbeReport): string {
+  return JSON.stringify({
+    schemaVersion: report.schemaVersion,
+    generatedAt: report.generatedAt,
+    adapterId: report.adapterId,
+    gateway: report.gateway,
+    endpointResults: report.endpointResults.map((result) => ({
+      endpoint: result.endpoint,
+      status: result.status,
+      requestedAt: result.requestedAt,
+      completedAt: result.completedAt,
+      latencyMs: result.latencyMs,
+      httpStatus: result.httpStatus,
+      huaweiError: result.huaweiError,
+      transportError: result.transportError,
+      rawXml: result.sanitizedRawXml,
+      sanitizedRawXml: result.sanitizedRawXml,
+      parsed: result.parsed === null ? null : {
+        ...result.parsed,
+        rawXml: result.sanitizedRawXml,
+        data: result.parsed.data === null ? null : sanitizeHuaweiValue(result.parsed.data),
+        response: sanitizeHuaweiValue(result.parsed.response),
+      },
+      parsedFields: result.parsedFields,
+    })),
+  }, null, 2);
 }

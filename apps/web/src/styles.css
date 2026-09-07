@@ -126,6 +126,20 @@ dt,
   background: rgba(115, 210, 177, 0.1);
 }
 
+.probe-tools {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.copy-all-button {
+  background: rgba(115, 210, 177, 0.1);
+  border: 1px solid rgba(115, 210, 177, 0.42);
+  color: #98e4c9;
+  font-size: 0.76rem;
+  padding: 0.5rem 0.65rem;
+}
+
 .status-chip--muted {
   border-color: rgba(174, 189, 208, 0.28);
   color: #aebdd0;
@@ -1490,6 +1504,17 @@ pre {
   .overview-heading {
     align-items: flex-start;
     display: block;
+  }
+
+  .probe-tools {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .copy-all-button {
+    font-size: 0.7rem;
+    padding: 0.45rem 0.55rem;
   }
 
   .status-pair {

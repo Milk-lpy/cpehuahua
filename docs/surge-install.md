@@ -43,8 +43,11 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
    当前版本按 endpoint 周期运行的集中轮询。首次轮询建议保持 `Remember Session` 开启，
    这样端点请求之间可以复用本地 Session/Cookie；关闭它时，认证端点可能需要每次重新
    登录。
-6. 对需要反馈的 endpoint 点击 `Copy Sanitized Result`，只发送脱敏结果；不要发送
-   浏览器 Network 导出、完整 Cookie、密码或未脱敏 RAW XML。
+6. 需要反馈数据时，在“只读探针清单”标题右侧点击 `复制本次全部`。它会把本次运行的
+   所有 endpoint、时间戳、状态、结构化解析结果、字段列表和脱敏 RAW XML 合并为一个
+   JSON，方便一次性复制。也可以在单个 endpoint 卡片中点击 `Copy Sanitized Result`。
+   不要发送浏览器 Network 导出、完整 Cookie、密码或未脱敏 RAW XML；重新点击“读取
+   Probe”时，页面会先清除上一次的探测结果。
 
 如果要记录 Internet 可达性，在页面填写一个自己信任、低负载且返回 2xx/3xx 的 HTTPS
 探测地址。地址只保存在本机浏览器设置，并通过 `/api/network-probe` 交给 Surge 本地
