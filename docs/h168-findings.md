@@ -115,6 +115,46 @@ supported 结论。加密 fallback 已加入代码并通过离线测试向量；
 key 集合识别。已在 core sanitizer 和 Surge bridge 同步增加这些标签/地址模式的脱敏，
 并加入测试；升级 Module 后再收集的 Probe 才是可外发的脱敏结果。
 
+## 第四批用户实机证据（2026-09-07）
+
+用户在升级脱敏规则和 PWA 后再次提供完整 ProbeReport。本节只记录第二组动态样本的
+结构和非敏感事实，不写入 Cell ID、TAC 原值、设备序列号、ICCID、MAC 或 WAN 地址。
+
+这次结果确认：
+
+- `device-basic-information`、`monitoring-status`、`net-current-plmn`、`device-signal`、
+  `device-seccellinfo`、`device-nbrcellinfo`、`monitoring-traffic-statistics`、
+  `device-information`、`SesTokInfo` 和 `state-login` 均返回 HTTP `200`；认证相关
+  endpoint 继续可用，没有再次出现 `crypto.subtle.importKey` 传输错误。
+- `device-signal` 再次返回 `mode=12`、`bandInfo=N78`、NR `100MHz` 和 `nrearfcn`，
+  并继续返回 NR RSRP/RSRQ/SINR/RSSI、CQI、Rank、BLER、RRC、MCS 复合字符串和 TX
+  power 复合字符串。第二组样本的 PCI、Cell ID、TAC、RSRP、SINR、CQI、Rank 等与
+  第三批不同，确认这些字段不是被前端或 fixture 写死的动态值。
+- `device-seccellinfo` 再次返回 1 条 `nrseccell_list` 记录、空的 LTE 列表。该记录的
+  ARFCN、频段和 PCI 与当前 PCC 样本高度接近；当前只按设备原始列表保留，不去重，
+  也不把它强行解释成“独立 SCell”，需要在切换/多载波样本中确认 endpoint 语义。
+- `device-nbrcellinfo` 本次返回 9 条 NR 邻区、空的 LTE 列表，记录格式仍为
+  `ARFCN,Band,PCI,RSRP,RSRQ,RSSI,SINR`。邻区数量与第三批不同，动态数组处理得到
+  了实际验证。
+- `monitoring-status` 的整体字段集合与前一轮一致；`CurrentWifiUser` 等运行时值会
+  变化。`ConnectionStatus`、`ServiceStatus`、`CurrentNetworkType` 等数值代码仍不
+  在没有官方语义/多样本结论时转换为布尔在线状态。
+- `current-plmn` 继续返回中国电信、`Numeric=46011`、`Rat=12`、`State=0` 的同一
+  结构；代码语义仍保持未确认。
+- `monitoring-traffic-statistics` 继续返回当前/累计流量和上下行速率，速率单位仍需
+  用用户路径测试交叉确认，规范化层不因第二组样本改变现有可撤销的 `*8` 参考转换。
+- 本次 `device-information` 中序列号、ICCID、IMEI/IMSI、MAC、WAN IPv4/IPv6 等值在
+  Probe 输出中均已被 `[REDACTED]` 替换，说明新版 core sanitizer、Surge bridge 和
+  前端二次脱敏共同生效。软件版本、WebUI/参数版本和 uptime 仍作为非敏感设备信息
+  保留。
+- Developer mode、developer item、AT port status 仍返回 HTTP `200` + Huawei
+  `100003`；这些候选能力继续保持拒绝/未支持状态，不提升温度、风扇或 AT 的支持结论。
+
+这批结果使“第二组动态 H168 样本”和“多邻区动态数组”进入证据记录，但仍不代表所有
+H168 固件、网络制式或多载波场景都具备相同字段。Event Engine 后续可以使用这些真实
+样本验证 `PCI_CHANGED`、`CELL_CHANGED`、`LOW_SINR` 等事件，但不能从两次样本臆造
+切换持续时间或 Internet outage。
+
 ## 已知差异
 
 1. 用户指定的 `lvcdy/huawei-lte-api-go` 当前仓库实际上是 Rust crate（`Cargo.toml`
@@ -131,6 +171,9 @@ key 集合识别。已在 core sanitizer 和 Surge bridge 同步增加这些标�
    确认。
 5. `MarvenAPPS/5g-cpe-signal-monitor` 当前 README 的测试设备是 H155-381、H153-381
    和 D-Link，不是 H168-383；其 MCS/CQI/MIMO/Tx Power 样例不能直接标为 H168 支持。
+6. 两组 H168 实机样本的 `seccellinfo` 都返回 1 条 NR 记录，且该记录与 PCC 的关键
+   标识接近；在确认其真实语义前，前端应显示“设备报告的 SCell 列表”，不要自动去重
+   或把数量解释为独立载波数量。
 
 ## 端点证据表
 
@@ -196,6 +239,8 @@ nrulmcs nrdlmcs nrtxpower
 - `ConnectionStatus=901`、`ServiceStatus=2`、`CurrentNetworkType=20`、`Rat=12` 等
   数值代码的官方/多样本语义；在此之前 CellularOnline 继续保持 `null`
 - 邻区和 SCell 在切换、LTE-only、NSA 和多载波场景下的列表数量与空值约定
+- `nrseccell_list` 与 PCC 的关系：当前两组样本都出现相近的单条记录，需用明确 CA
+  场景确认是否为 PCC 镜像、当前辅载波或设备端的统一 cell 列表
 
 收到用户脱敏 Probe 输出后，按 endpoint 逐项更新本表，并保留“原始 key → 标准字段”
 的证据；在更新前不扩大 supported 字段集合。
