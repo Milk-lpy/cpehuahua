@@ -40,6 +40,7 @@ const REAUTH_ON_NO_RIGHTS_PATHS = new Set([
   "/api/net/net-mode",
   "/api/net/net-mode-list",
   "/api/net/lock-freq",
+  "/config/network/bandfreqlist.xml",
   "/api/dialup/mobile-dataswitch",
   "/api/wlan/host-list",
   "/api/wlan/multi-basic-settings",
@@ -69,10 +70,10 @@ const ENDPOINTS = [
   endpoint("sms-count", "SMS mailbox counts", "/api/sms/sms-count", true, 10_000, "h168-live-observed"),
   endpoint("net-net-mode", "Network mode and LTE band mask", "/api/net/net-mode", true, null, "h168-live-observed"),
   endpoint("net-net-mode-list", "Supported network modes and LTE bands", "/api/net/net-mode-list", true, null, "h168-live-observed"),
-  endpoint("net-lock-freq", "LTE / NR frequency lock state", "/api/net/lock-freq", true, null, "reference-shape"),
-  endpoint("network-band-frequency-list", "Supported LTE / NR frequency list", "/config/network/bandfreqlist.xml", true, null, "reference-shape"),
+  endpoint("net-lock-freq", "LTE / NR frequency lock state", "/api/net/lock-freq", true, null, "h168-live-observed"),
+  endpoint("network-band-frequency-list", "Supported LTE / NR frequency list", "/config/network/bandfreqlist.xml", true, null, "h168-live-observed"),
   endpoint("dialup-mobile-dataswitch", "Mobile data switch", "/api/dialup/mobile-dataswitch", true, null, "h168-live-observed"),
-  endpoint("wlan-multi-basic-settings", "WLAN SSID index mapping", "/api/wlan/multi-basic-settings", true, null, "reference-shape"),
+  endpoint("wlan-multi-basic-settings", "WLAN SSID index mapping", "/api/wlan/multi-basic-settings", true, null, "h168-live-observed"),
   endpoint("wlan-multi-macfilter-settings-ex", "WLAN client filter settings", "/api/wlan/multi-macfilter-settings-ex", true, null, "h168-live-observed"),
 ];
 
@@ -1476,6 +1477,11 @@ function supportedLteBands(rawXml) {
   return numericBands(Array.from(String(rawXml).matchAll(/LTE\s+BC(\d+)/gi), (match) => match[1]));
 }
 
+function configuredBands(rawXml, tag) {
+  const value = xmlText(rawXml, [tag]);
+  return value ? numericBands(value.split(",")) : [];
+}
+
 function lockInfo(rawXml, tag) {
   const section = xmlBlocks(rawXml, tag)[0] || "";
   return {
@@ -1531,6 +1537,10 @@ function requireBands(payload, key) {
   const bands = numericBands(payload[key]);
   if (bands.length !== payload[key].length) throw new Error(key + " 包含无效频段");
   return bands;
+}
+
+function sameBands(left, right) {
+  return left.length === right.length && left.every((band, index) => band === right[index]);
 }
 
 function macFilterRequest(ssidIndex, devices) {
@@ -1590,22 +1600,29 @@ async function executeControl(context, action, payload) {
     const mode = await authenticatedGet(context, "/api/net/net-mode");
     const modeList = await authenticatedGet(context, "/api/net/net-mode-list");
     const lock = await authenticatedGet(context, "/api/net/lock-freq");
+    const bandFrequencyList = await authenticatedGet(context, "/config/network/bandfreqlist.xml");
     const dataSwitch = await authenticatedGet(context, "/api/dialup/mobile-dataswitch");
     const modeState = responseStatus(mode);
     const switchState = responseStatus(dataSwitch);
     if (modeState.status !== "ok") return { ...modeState, data: null };
     const modeListState = responseStatus(modeList);
     const lockState = responseStatus(lock);
+    const bandFrequencyState = responseStatus(bandFrequencyList);
     const lteLock = lockState.status === "ok" ? lockInfo(lock.body, "lte_info") : { mode: null, bands: [] };
     const nrLock = lockState.status === "ok" ? lockInfo(lock.body, "nr_info") : { mode: null, bands: [] };
-    return { status: switchState.status === "ok" && modeListState.status === "ok" && lockState.status === "ok" ? "ok" : "partial", httpStatus: mode.status, huaweiError: null, data: {
+    return { status: switchState.status === "ok" && modeListState.status === "ok" && lockState.status === "ok" && bandFrequencyState.status === "ok" ? "ok" : "partial", httpStatus: mode.status, huaweiError: null, data: {
       networkMode: xmlText(mode.body, ["NetworkMode"]),
       networkBand: xmlText(mode.body, ["NetworkBand"]),
       lteBand: xmlText(mode.body, ["LTEBand"]),
       nrBand: xmlText(mode.body, ["NRBand"]),
       networkOption: xmlText(mode.body, ["networkOption"]),
       supportedModes: modeListState.status === "ok" ? supportedModes(modeList.body) : [],
-      supportedLteBands: modeListState.status === "ok" ? supportedLteBands(modeList.body) : [],
+      supportedLteBands: bandFrequencyState.status === "ok"
+        ? configuredBands(bandFrequencyList.body, "lte_support_band_list")
+        : modeListState.status === "ok" ? supportedLteBands(modeList.body) : [],
+      supportedNrBands: bandFrequencyState.status === "ok"
+        ? configuredBands(bandFrequencyList.body, "nr_support_band_list")
+        : [],
       lteLockMode: lteLock.mode,
       nrLockMode: nrLock.mode,
       lockedLteBands: lteLock.bands,
@@ -1634,6 +1651,13 @@ async function executeControl(context, action, payload) {
     const lteBands = requireBands(payload, "lteBands");
     const nrBands = requireBands(payload, "nrBands");
     if (lteBands.length === 0 && nrBands.length === 0) throw new Error("至少选择一个 LTE 或 NR 频段");
+    const capabilities = await authenticatedGet(context, "/config/network/bandfreqlist.xml");
+    if (responseStatus(capabilities).status !== "ok") throw new Error("无法读取设备锁频能力，已拒绝写入");
+    const allowedLte = configuredBands(capabilities.body, "lte_support_band_list");
+    const allowedNr = configuredBands(capabilities.body, "nr_support_band_list");
+    if (lteBands.some((band) => !allowedLte.includes(band)) || nrBands.some((band) => !allowedNr.includes(band))) {
+      throw new Error("选择中包含设备未声明支持的锁频 Band，已拒绝写入");
+    }
     const response = await authenticatedPost(context, "/api/net/lock-freq", lockRequest(lteBands, nrBands));
     const state = responseStatus(response);
     if (state.status !== "ok") return { ...state, data: null };
@@ -1641,7 +1665,7 @@ async function executeControl(context, action, payload) {
     const readState = responseStatus(readback);
     const actualLte = readState.status === "ok" ? lockInfo(readback.body, "lte_info").bands : [];
     const actualNr = readState.status === "ok" ? lockInfo(readback.body, "nr_info").bands : [];
-    const verified = readState.status === "ok" && lteBands.every((band) => actualLte.includes(band)) && nrBands.every((band) => actualNr.includes(band));
+    const verified = readState.status === "ok" && sameBands(lteBands, actualLte) && sameBands(nrBands, actualNr);
     return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified, lteBands: actualLte, nrBands: actualNr } };
   }
   if (action === "network.unlock") {

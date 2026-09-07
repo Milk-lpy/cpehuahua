@@ -30,6 +30,7 @@ export interface NetworkControlState {
   networkOption: string | null;
   supportedModes: string[];
   supportedLteBands: number[];
+  supportedNrBands: number[];
   lteLockMode: string | null;
   nrLockMode: string | null;
   lockedLteBands: number[];

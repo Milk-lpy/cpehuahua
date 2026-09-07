@@ -193,7 +193,7 @@ export const H168_PROBE_ENDPOINTS: readonly ProbeEndpoint[] = [
     intervalMs: null,
     requiresAuth: true,
     defaultEnabled: true,
-    evidence: "reference-shape",
+    evidence: "h168-live-observed",
   },
   {
     id: "network-band-frequency-list",
@@ -202,7 +202,7 @@ export const H168_PROBE_ENDPOINTS: readonly ProbeEndpoint[] = [
     intervalMs: null,
     requiresAuth: true,
     defaultEnabled: true,
-    evidence: "reference-shape",
+    evidence: "h168-live-observed",
   },
   {
     id: "dialup-mobile-dataswitch",
@@ -220,7 +220,7 @@ export const H168_PROBE_ENDPOINTS: readonly ProbeEndpoint[] = [
     intervalMs: null,
     requiresAuth: true,
     defaultEnabled: true,
-    evidence: "reference-shape",
+    evidence: "h168-live-observed",
   },
   {
     id: "wlan-multi-macfilter-settings-ex",

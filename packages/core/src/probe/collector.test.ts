@@ -27,6 +27,12 @@ describe("Probe collector", () => {
     expect(status?.requiresAuth).toBe(true);
   });
 
+  it("records the newly observed H168 lock and WLAN capability reads", () => {
+    for (const id of ["net-lock-freq", "network-band-frequency-list", "wlan-multi-basic-settings"]) {
+      expect(H168_PROBE_ENDPOINTS.find((item) => item.id === id)?.evidence).toBe("h168-live-observed");
+    }
+  });
+
   it("records raw XML, Huawei errors, keys, latency and a sanitized copy", async () => {
     const transport = new FakeProbeTransport();
     const endpoints = H168_PROBE_ENDPOINTS.filter((item) => ["monitoring-status", "device-signal"].includes(item.id));

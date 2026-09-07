@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <lte_info><lock_mode>0</lock_mode><freq_infos></freq_infos><all_bands></all_bands></lte_info>
+  <nr_info><lock_mode>0</lock_mode><freq_infos></freq_infos><all_bands></all_bands></nr_info>
+</response>

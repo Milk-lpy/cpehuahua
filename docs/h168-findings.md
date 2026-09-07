@@ -193,6 +193,20 @@ Probe/实时轮询在读取状态前完成登录；会话过期仍只进行一�
 移除，改为读取 SSID 索引与当前黑名单后再向 `multi-macfilter-settings` 写回，并提供
 解除黑名单；未取得 `/api/wlan/multi-basic-settings` 的名称到索引映射时不开放按钮。
 
+13:41 的后续 Probe 已确认 `/api/net/lock-freq` 可读，LTE 与 NR 的 `lock_mode` 均为
+`0`，表示采样时没有锁频。`/config/network/bandfreqlist.xml` 同时给出了这台设备用于
+锁频的真实支持清单：LTE B1/B3/B5/B7/B8/B20/B28/B38/B40/B41/B42/B43/B71，NR
+N1/N3/N5/N7/N8/N20/N28/N38/N40/N41/N71/N77/N78/N79。虽然 `net-mode-list` 的 LTE
+掩码名称还包含 B32，但 B32 不在锁频配置清单内，因此只把它视为网络模式掩码能力，
+不在锁频选择器中展示。
+控制桥在 POST 前会再次读取这份能力清单；请求中若含设备未声明的 Band，会在本地拒绝，
+不会把该 XML 发给路由器。
+
+同批报告还确认 `/api/wlan/multi-basic-settings` 中在线 SSID `super_5GHz_1` 对应索引
+`6`；过滤读取返回 `wifimacfilterstatus=2`（黑名单模式）、`enable=0` 且各索引列表为空。
+终端控制现在可以用设备返回的 SSID 名称精确映射索引，不再猜测。以上均为 GET 读取
+证据，`lock-freq` 和终端黑名单 POST 仍需用户实际操作后的回读验证。
+
 本批还观察到两个 N78 100 MHz 载波（NRARFCN 627264 与 633984）。解析器保留两条
 记录，即使 Band 与 PCI 相同也不按单一 N78 去重。脱敏器此前把
 `wifimacfilterstatus`、`wifimacblacklist`、`wifimacwhitelist` 误判为 MAC 地址字段，
@@ -248,8 +262,9 @@ Probe/实时轮询在读取状态前完成登录；会话过期仍只进行一�
 | `/api/net/net-mode-list` | `live-observed` H168-383 实机 HTTP 200 | 已观察模式 00/08/03 和设备支持的 LTE Band 集合 |
 | `/api/dialup/mobile-dataswitch` | `live-observed` H168-383 实机 HTTP 200 | 已观察移动数据读取状态；写入仍待用户操作后的回读证据 |
 | `/api/wlan/multi-macfilter-settings-ex` | `live-observed` H168-383 实机 HTTP 200 | 已观察 13 个 SSID 索引、空黑白名单和 enable=0；写入尚未验证 |
-| `/api/net/lock-freq` | `reference-shape` | 新增 GET Probe；读取成功前禁用 LTE/NR 锁频写入 |
-| `/api/wlan/multi-basic-settings` | `reference-shape` | 新增 GET Probe；用于把在线终端 SSID 名称映射到过滤索引 |
+| `/api/net/lock-freq` | `live-observed` H168-383 实机 HTTP 200 | 已确认 LTE/NR lock_mode=0；写入仍需操作后的回读证据 |
+| `/config/network/bandfreqlist.xml` | `live-observed` H168-383 实机 HTTP 200 | 锁频选择器采用设备返回的 LTE/NR support band list；不把仅出现在模式掩码中的 B32 当作可锁频能力 |
+| `/api/wlan/multi-basic-settings` | `live-observed` H168-383 实机 HTTP 200 | 已确认在线 SSID `super_5GHz_1` 映射到索引 6，用于终端过滤写入目标 |
 
 ## 有界控制阶段（待实机回读）
 
@@ -261,8 +276,8 @@ Probe/实时轮询在读取状态前完成登录；会话过期仍只进行一�
 | --- | --- | --- |
 | 短信列表/发送/已读/删除 | `/api/sms/sms-list`、`send-sms`、`set-read`、`delete-sms` | HiLink 参考形状；H168 仅 `sms-count` 已实测 |
 | 移动数据 | `/api/dialup/mobile-dataswitch` | H168 GET 已实测；POST 后仍需回读 |
-| 网络模式和 Band | `/api/net/net-mode`、`/api/net/lock-freq` | net-mode GET 已实测；lock-freq 读写形状待新 Probe/操作回读 |
-| 终端断网/恢复 | `/api/wlan/multi-macfilter-settings-ex`、`multi-macfilter-settings` | 过滤 GET 已实测；按 SSID 保留现有黑名单并提供撤销，POST 待回读 |
+| 网络模式和 Band | `/api/net/net-mode`、`/api/net/lock-freq` | 两个 GET 均已实测；lock-freq POST 仍待操作回读 |
+| 终端断网/恢复 | `/api/wlan/multi-basic-settings`、`multi-macfilter-settings-ex`、`multi-macfilter-settings` | SSID 索引和过滤 GET 已实测；按索引保留现有黑名单并提供撤销，POST 待回读 |
 | 设备重启 | `/api/device/control` + `Control=1` | 多个 HiLink 实现一致，当前 H168 未验证 |
 
 没有开放任意 endpoint/XML 透传，也没有开放恢复出厂、升级、关机、AT/开发者模式。
