@@ -50,11 +50,33 @@ function isEndpointPayload(value: unknown): value is EndpointBridgePayload {
     && isEndpointResult(value.endpointResult);
 }
 
-function isSessionFailure(result: EndpointProbeResult): boolean {
+const REAUTH_ON_NO_RIGHTS_ENDPOINTS = new Set([
+  "device-signal",
+  "device-seccellinfo",
+  "device-nbrcellinfo",
+  "monitoring-traffic-statistics",
+  "device-information",
+  "net-cell-info",
+]);
+
+function isSessionFailure(result: EndpointProbeResult, endpoint?: ProbeEndpoint): boolean {
   return result.status === "transport-error"
     || result.httpStatus === 401
     || result.huaweiError?.code === 125002
-    || result.huaweiError?.code === 125003;
+    || result.huaweiError?.code === 125003
+    // H168 may report an expired/insufficiently bound session as 100003
+    // instead of the more specific 12500x session errors. The Bridge gets one
+    // password-backed retry; a persistent 100003 remains visible as evidence.
+    || (result.huaweiError?.code === 100003
+      && endpoint !== undefined
+      && REAUTH_ON_NO_RIGHTS_ENDPOINTS.has(endpoint.id));
+}
+
+function isHardSessionFailure(result: EndpointProbeResult, endpoint: ProbeEndpoint): boolean {
+  return isSessionFailure(result, endpoint)
+    && (result.huaweiError?.code === 100003
+      || result.huaweiError?.code === 125002
+      || result.huaweiError?.code === 125003);
 }
 
 /** Reads one endpoint through the local Surge Bridge; it never contacts Huawei directly. */
@@ -67,6 +89,7 @@ export class H168EndpointClient {
   private deviceConfirmed = false;
   private sessionPrimed = false;
   private latestGateway: string | null = null;
+  private readonly blockedSessionRetries = new Set<string>();
 
   constructor(bridgeUrl: string, options: EndpointClientOptions = {}) {
     this.bridgeUrl = bridgeUrl;
@@ -86,22 +109,43 @@ export class H168EndpointClient {
     }
     const rememberSession = this.rememberSession();
     const password = this.getPassword();
+    const retryBlocked = this.blockedSessionRetries.has(endpoint.id);
     const shouldSendPassword = endpoint.requiresAuth
       && password.length > 0
+      && !retryBlocked
       && (!rememberSession || !this.sessionPrimed);
     let result = await this.request(endpoint, shouldSendPassword ? password : "", rememberSession);
 
     // A remembered Huawei session may expire between endpoint polls. Retry the
     // failed read once with the in-memory password, never recursively. The
-    // Huawei firmware may report this as transport failure, HTTP 401, or
-    // error 125002/125003 depending on where the session was rejected.
-    if (isSessionFailure(result) && password && rememberSession && !shouldSendPassword) {
+    // Huawei firmware may report this as transport failure, HTTP 401, error
+    // 125002/125003, or the less-specific 100003 depending on where the
+    // session was rejected.
+    if (
+      isSessionFailure(result, endpoint)
+      && password
+      && rememberSession
+      && !shouldSendPassword
+      && !retryBlocked
+    ) {
       result = await this.request(endpoint, password, rememberSession);
+      if (isSessionFailure(result, endpoint)) {
+        this.blockedSessionRetries.add(endpoint.id);
+      }
+    } else if (shouldSendPassword && rememberSession && isHardSessionFailure(result, endpoint)) {
+      // The Bridge already attempted its single password-backed recovery for
+      // this request. Avoid sending the password again on every poll if the
+      // device still rejects the endpoint.
+      this.blockedSessionRetries.add(endpoint.id);
+    }
+
+    if (result.status === "ok") {
+      this.blockedSessionRetries.delete(endpoint.id);
     }
 
     if (endpoint.requiresAuth && rememberSession && (
       result.status === "ok"
-      || (result.status === "huawei-error" && !isSessionFailure(result))
+      || (result.status === "huawei-error" && !isSessionFailure(result, endpoint))
     )) {
       this.sessionPrimed = true;
     }
@@ -145,6 +189,7 @@ export class H168EndpointClient {
     if (this.latestGateway !== null && this.latestGateway !== payload.gateway) {
       this.deviceConfirmed = false;
       this.sessionPrimed = false;
+      this.blockedSessionRetries.clear();
     }
     this.latestGateway = payload.gateway;
     this.onGateway?.(this.latestGateway);

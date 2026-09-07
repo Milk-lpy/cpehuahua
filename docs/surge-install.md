@@ -64,8 +64,12 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 - `basic_information` 失败：记录 HTTP 状态、页面错误和脱敏结果；不要继续猜测 IP。
 - 登录失败或 endpoint 返回 `125003`：保留对应卡片的 Huawei error、parsed fields
   和脱敏 RAW XML。不要反复快速提交密码，以免触发设备登录限制。
-- 某个 endpoint 返回 404/`100002`/`100003`：这属于能力证据，不能改成 `0` 或用
-  其他指标代替；把结果发回后再更新 `docs/h168-findings.md`。
+- 运行时数据 endpoint 返回 `100003`：更新 Module 后重试；Bridge 只会在本次请求明确带有
+  密码时对这类数据端点自动重建一次认证，持续的 `100003` 仍按设备权限/固件差异保留，
+  不能改成空数据。
+- Developer/AT 候选 endpoint，或运行时 endpoint 在一次重认证后仍返回
+  404/`100002`/`100003`：这属于能力/权限证据，不能改成 `0` 或用其他指标代替；
+  把结果发回后再更新 `docs/h168-findings.md`。
 
 Bridge 的持久化状态使用 Surge 的 `$persistentStore`：`Remember Session` 保存
 本地 Session/Cookie/CSRF 状态，`Remember Password` 才保存密码；二者独立。V1 不

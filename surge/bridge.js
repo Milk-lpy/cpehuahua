@@ -19,6 +19,19 @@ const ALLOWED_WEB_ORIGINS = new Set([
   "http://localhost:4173",
 ]);
 
+// 100003 means "no rights" on Huawei firmware. For runtime data endpoints it
+// can also be the firmware's response to a stale session. Retry authentication
+// once for these paths only; developer/AT candidates intentionally remain
+// explicit capability evidence and must not enter an auth loop.
+const REAUTH_ON_NO_RIGHTS_PATHS = new Set([
+  "/api/device/signal",
+  "/api/device/seccellinfo",
+  "/api/device/nbrcellinfo",
+  "/api/monitoring/traffic-statistics",
+  "/api/device/information",
+  "/api/net/cell-info",
+]);
+
 const ENDPOINTS = [
   endpoint("device-basic-information", "Device basic information", "/api/device/basic_information", false, null, "h168-reference-claimed"),
   endpoint("monitoring-status", "Monitoring status", "/api/monitoring/status", false, 2_000, "h168-reference-claimed"),
@@ -390,8 +403,11 @@ function isSuccessful(response) {
   return response.status >= 200 && response.status < 300;
 }
 
-function isSessionInvalid(response, parsed) {
-  return response.status === 401 || parsed.error?.code === 125002 || parsed.error?.code === 125003;
+function isSessionInvalid(response, parsed, path, passwordProvided) {
+  return response.status === 401
+    || parsed.error?.code === 125002
+    || parsed.error?.code === 125003
+    || (passwordProvided && parsed.error?.code === 100003 && REAUTH_ON_NO_RIGHTS_PATHS.has(path));
 }
 
 function hex(bytes) {
@@ -660,13 +676,15 @@ function contextFromRequest() {
     cookies,
     csrfToken,
     password: payloadPassword || (rememberPassword ? storedPassword : ""),
+    passwordProvided: payloadPassword.length > 0,
     username: typeof payload.username === "string" && payload.username ? payload.username : "admin",
     rememberSession,
     rememberPassword,
     // Endpoint routes are independent Surge requests. Reuse the persisted
     // session directly instead of replaying the login preflight for every
     // 1-second signal/traffic request. The endpoint itself remains the
-    // authority; an explicit 125002/125003 response triggers one re-login.
+    // authority; an explicit session error, or runtime-data 100003 response,
+    // triggers at most one re-login.
     authenticated: Boolean(csrfToken && cookieHeader(cookies)),
   };
 }
@@ -802,7 +820,7 @@ async function authenticatedGet(context, path) {
     response = await contextRequest(context, "GET", path, authHeaders(context, context.csrfToken));
   }
   const parsed = parseXml(response.body);
-  if (isSessionInvalid(response, parsed) && !reauthenticationAttempted) {
+  if (isSessionInvalid(response, parsed, path, context.passwordProvided) && !reauthenticationAttempted) {
     // Exactly one re-authentication attempt; no recursive retry.
     await login(context, true);
     response = await contextRequest(context, "GET", path, authHeaders(context, context.csrfToken));

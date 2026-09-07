@@ -4,7 +4,7 @@
 
 [Script]
 # The domain is intentionally dedicated to this bridge. Enable MITM only for it.
-cpehuahua-bridge = type=http-request,pattern=^https://cpe-bridge\.example\.com/api/(probe|live|endpoint/[a-z0-9-]+|network-probe)$,requires-body=true,max-size=16384,engine=webview,script-path=https://raw.githubusercontent.com/Milk-lpy/cpehuahua/refs/heads/main/surge/bridge.js?v=20260907-radio-details,script-update-interval=86400,timeout=30
+cpehuahua-bridge = type=http-request,pattern=^https://cpe-bridge\.example\.com/api/(probe|live|endpoint/[a-z0-9-]+|network-probe)$,requires-body=true,max-size=16384,engine=webview,script-path=https://raw.githubusercontent.com/Milk-lpy/cpehuahua/refs/heads/main/surge/bridge.js?v=20260907-100003-cooldown,script-update-interval=86400,timeout=30
 
 [MITM]
 hostname = cpe-bridge.example.com

@@ -159,6 +159,15 @@ H168 固件、网络制式或多载波场景都具备相同字段。Event Engine
 样本验证 `PCI_CHANGED`、`CELL_CHANGED`、`LOW_SINR` 等事件，但不能从两次样本臆造
 切换持续时间或 Internet outage。
 
+## 第五批实时错误证据（2026-09-07）
+
+用户在 Dashboard 实时轮询时看到 `/api/device/seccellinfo` 返回 HTTP `200` + Huawei
+`100003`，而该端点此前在 Probe 中成功返回过 NR 列表。这个差异不能直接证明 SCell
+能力消失：Huawei 的 `100003` 既可能是请求权限/会话问题，也可能是当前固件对端点的
+拒绝。Bridge 现仅在请求明确带密码时对运行时数据端点最多执行一次密码重认证；若重
+认证后仍为 `100003`，继续原样报告错误，不把 SCell 列表伪造成空数组，也不对
+Developer/AT 候选端点进行同样的循环重试。
+
 ## 已知差异
 
 1. 用户指定的 `lvcdy/huawei-lte-api-go` 当前仓库实际上是 Rust crate（`Cargo.toml`

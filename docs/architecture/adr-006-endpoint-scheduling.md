@@ -24,6 +24,8 @@ Signal 使用相同频率请求。
   `intervalMs` 调度，并把最新结果交给 Adapter，再交给 `EventEngine`。
 - H168 登录只通过 Bridge 进行。`Remember Session` 开启时，端点请求之间复用 Surge
   本地的 Cookie/CSRF；Session 失效时，客户端最多额外用内存中的密码重试一次。
+- 对 Signal、SCell、邻区、流量等运行时数据端点，Huawei `100003` 允许触发一次密码
+  认证重建；Developer/AT 候选端点不套用这个规则，以免把固件的权限拒绝变成循环登录。
 - `/api/live` 保留为兼容客户端和实机诊断回退，不是默认 Dashboard 调度路径。
 - 浏览器只在 `localStorage` 保存有界的规范化快照、历史和事件，不保存密码、Session、
   Token 或 RAW XML。
