@@ -50,6 +50,13 @@ function isEndpointPayload(value: unknown): value is EndpointBridgePayload {
     && isEndpointResult(value.endpointResult);
 }
 
+function isSessionFailure(result: EndpointProbeResult): boolean {
+  return result.status === "transport-error"
+    || result.httpStatus === 401
+    || result.huaweiError?.code === 125002
+    || result.huaweiError?.code === 125003;
+}
+
 /** Reads one endpoint through the local Surge Bridge; it never contacts Huawei directly. */
 export class H168EndpointClient {
   private readonly bridgeUrl: string;
@@ -85,12 +92,17 @@ export class H168EndpointClient {
     let result = await this.request(endpoint, shouldSendPassword ? password : "", rememberSession);
 
     // A remembered Huawei session may expire between endpoint polls. Retry the
-    // failed read once with the in-memory password, never recursively.
-    if (result.status === "transport-error" && password && rememberSession && !shouldSendPassword) {
+    // failed read once with the in-memory password, never recursively. The
+    // Huawei firmware may report this as transport failure, HTTP 401, or
+    // error 125002/125003 depending on where the session was rejected.
+    if (isSessionFailure(result) && password && rememberSession && !shouldSendPassword) {
       result = await this.request(endpoint, password, rememberSession);
     }
 
-    if (endpoint.requiresAuth && result.status !== "transport-error" && rememberSession) {
+    if (endpoint.requiresAuth && rememberSession && (
+      result.status === "ok"
+      || (result.status === "huawei-error" && !isSessionFailure(result))
+    )) {
       this.sessionPrimed = true;
     }
     if (endpoint.id === "device-basic-information") {

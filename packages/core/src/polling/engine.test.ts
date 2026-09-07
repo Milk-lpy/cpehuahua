@@ -165,4 +165,52 @@ describe("PollingEngine", () => {
     expect(calls).toEqual(["fast"]);
     expect(engine.latestResults.fast?.status).toBe("transport-error");
   });
+
+  it("keeps the last successful endpoint data during a transient read failure", async () => {
+    let clock = 0;
+    let readCount = 0;
+    const preservingAdapter: CpeAdapter = {
+      ...adapter,
+      normalize: (input) => {
+        const base = adapter.normalize(input);
+        return {
+          ...base,
+          radio: {
+            ...base.radio,
+            rsrpDbm: input.endpointResults.fast?.status === "ok" ? -72 : null,
+          },
+        };
+      },
+    };
+    const snapshots: CpeSnapshot[] = [];
+    const engine = new PollingEngine({
+      adapter: preservingAdapter,
+      endpoints: [endpoints[0]!],
+      gateway: null,
+      now: () => clock,
+      read: async (endpoint) => {
+        readCount += 1;
+        if (readCount === 1) return result(endpoint);
+        return {
+          ...result(endpoint),
+          status: "transport-error",
+          httpStatus: null,
+          transportError: "session expired",
+          rawXml: "",
+          sanitizedRawXml: "",
+          parsed: null,
+          parsedFields: [],
+        };
+      },
+      onSnapshot: (snapshotValue) => snapshots.push(snapshotValue),
+    });
+
+    await engine.pollDue(0);
+    clock = 1_000;
+    await engine.pollDue(clock);
+
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1]?.radio.rsrpDbm).toBe(-72);
+    expect(engine.latestResults.fast?.status).toBe("transport-error");
+  });
 });

@@ -768,10 +768,20 @@ async function login(context, force) {
 }
 
 async function authenticatedGet(context, path) {
-  await login(context, false);
+  let reauthenticationAttempted = false;
+  try {
+    await login(context, false);
+  } catch (error) {
+    // A persisted cookie can be stale before the endpoint request is made.
+    // If this request carries the password, clear that state and retry once.
+    // Do not loop: a wrong password must become a visible endpoint error.
+    if (!context.password) throw error;
+    reauthenticationAttempted = true;
+    await login(context, true);
+  }
   let response = await contextRequest(context, "GET", path, authHeaders(context, context.csrfToken));
   const parsed = parseXml(response.body);
-  if (isSessionInvalid(response, parsed)) {
+  if (isSessionInvalid(response, parsed) && !reauthenticationAttempted) {
     // Exactly one re-authentication attempt; no recursive retry.
     await login(context, true);
     response = await contextRequest(context, "GET", path, authHeaders(context, context.csrfToken));

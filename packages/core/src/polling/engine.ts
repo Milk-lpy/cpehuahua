@@ -67,6 +67,10 @@ export class PollingEngine {
   private readonly onSnapshot: ((snapshot: CpeSnapshot) => void) | undefined;
   private readonly scheduleStates: ScheduleState[];
   private readonly latest = new Map<string, EndpointProbeResult>();
+  // Keep diagnostics current in `latest`, but do not turn one transient
+  // transport/session failure into a blank normalized snapshot when a prior
+  // successful response exists for the same endpoint.
+  private readonly latestReadable = new Map<string, EndpointProbeResult>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private activePoll: Promise<CpeSnapshot | null> | null = null;
   private started = false;
@@ -120,6 +124,7 @@ export class PollingEngine {
   reset(): void {
     this.stop();
     this.latest.clear();
+    this.latestReadable.clear();
     for (const state of this.scheduleStates) {
       state.nextDueAt = 0;
       state.completed = false;
@@ -172,6 +177,9 @@ export class PollingEngine {
         state.inFlight = false;
       }
       this.latest.set(state.endpoint.id, result);
+      if (result.status === "ok" || !this.latestReadable.has(state.endpoint.id)) {
+        this.latestReadable.set(state.endpoint.id, result);
+      }
       this.onEndpointResult?.(result);
       if (state.endpoint.intervalMs === null) {
         state.completed = true;
@@ -184,7 +192,7 @@ export class PollingEngine {
       timestamp: isoAt(this.now()),
       source: this.source,
       gateway: this.gateway,
-      endpointResults: this.latestResults,
+      endpointResults: Object.fromEntries(this.latestReadable),
     });
     this.onSnapshot?.(snapshot);
     return snapshot;
