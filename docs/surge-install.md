@@ -20,6 +20,8 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 - 当前 Module 每 86400 秒检查一次远程脚本。修改 GitHub 上的 `bridge.js` 后，可在 Surge
   中手动更新 Module；如果需要固定版本，把 `script-path` 中的 `main` 替换为具体 commit
   SHA，并同步固定 Module 版本。
+- 当前脚本 URL 带有版本查询参数，用于避免 Surge/网络缓存继续使用旧脚本。网页来源或
+  Bridge 逻辑更新后，请在手机 Surge 中手动更新一次 Module，再重新打开网页。
 - 只为 Bridge 域名启用 MITM。示例使用 `cpe-bridge.example.com`；如果改成自己的
   专用域名，必须同时修改 Module 的 `[Script]` pattern、`[MITM] hostname` 和网页
   中的 Bridge URL。不要把大量无关域名加入 MITM。

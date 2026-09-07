@@ -20,6 +20,13 @@ interface BridgeErrorPayload {
   message?: string;
 }
 
+function userFacingBridgeError(cause: unknown): string {
+  if (cause instanceof Error && /load failed|failed to fetch|networkerror/i.test(cause.message)) {
+    return "无法访问本地 Bridge：请在 Surge 中更新并启用 CPE Huahua Module，确认 cpe-bridge.example.com 已开启 MITM，并连接 H168 Wi-Fi。";
+  }
+  return cause instanceof Error ? cause.message : "无法读取 Bridge";
+}
+
 function isProbeReport(value: unknown): value is ProbeReport {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -214,7 +221,7 @@ function App() {
       }
     } catch (cause) {
       setReport(null);
-      setError(cause instanceof Error ? cause.message : "无法读取 Bridge");
+      setError(userFacingBridgeError(cause));
     } finally {
       setLoading(false);
     }
