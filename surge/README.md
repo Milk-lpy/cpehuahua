@@ -1,5 +1,24 @@
 # CPE Huahua Surge runtime
 
+## GitHub 引用方式
+
+推荐直接导入仓库中的 Module：
+
+```text
+https://raw.githubusercontent.com/Milk-lpy/cpehuahua/main/surge/cpehuahua.sgmodule
+```
+
+Module 内的 `script-path` 已经指向：
+
+```text
+https://raw.githubusercontent.com/Milk-lpy/cpehuahua/main/surge/bridge.js
+```
+
+Surge 会自动下载并缓存远程脚本。默认每 86400 秒检查更新；修改 GitHub 上的脚本后，
+可以在 Surge 中手动更新 Module。需要可复现的固定版本时，把 URL 中的 `main` 换成
+具体 commit SHA。首次下载或更新脚本需要访问 GitHub，下载完成后本地 H168 监控不依赖
+远端服务器持续在线。
+
 `bridge.js` 是当前阶段的单文件 Surge 入口，原因是 Surge Module 运行时不保证
 方便加载项目内多文件模块。协议和数据模型的可测试实现仍在 `packages/core`；该
 文件只是把回调式 `$httpClient`、`$persistentStore` 和 WebView Web Crypto 接到

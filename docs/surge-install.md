@@ -11,8 +11,15 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 
 - iPhone 已连接 H168-383 Wi-Fi。
 - Surge 已安装并能正常接管该 Wi-Fi 的 HTTP 请求。
-- `surge/cpehuahua.sgmodule` 和 `surge/bridge.js` 都已导入；若 Surge 的脚本路径
-  解析方式不同，按本机界面把 `script-path=bridge.js` 指向导入的同一份脚本。
+- 直接导入 GitHub 上的 Module：
+  `https://raw.githubusercontent.com/Milk-lpy/cpehuahua/main/surge/cpehuahua.sgmodule`。
+  Module 会通过 `script-path` 自动下载并缓存 GitHub 上的
+  `surge/bridge.js`，不需要再单独导入脚本文件。
+- 第一次启用 Module 或脚本更新时需要临时能够访问 GitHub；下载成功后 Surge 使用本地
+  缓存的脚本，H168 Wi-Fi 断 Internet 但 iPhone 仍能连接 CPE 时，Bridge 仍可继续运行。
+- 当前 Module 每 86400 秒检查一次远程脚本。修改 GitHub 上的 `bridge.js` 后，可在 Surge
+  中手动更新 Module；如果需要固定版本，把 `script-path` 中的 `main` 替换为具体 commit
+  SHA，并同步固定 Module 版本。
 - 只为 Bridge 域名启用 MITM。示例使用 `cpe-bridge.example.com`；如果改成自己的
   专用域名，必须同时修改 Module 的 `[Script]` pattern、`[MITM] hostname` 和网页
   中的 Bridge URL。不要把大量无关域名加入 MITM。
