@@ -40,8 +40,9 @@ H168 XML + HTTP metadata
 ```
 
 Probe 结果同时保存 `rawXml` 和 `sanitizedRawXml`。UI 默认只显示后者；复制功能只
-输出脱敏对象。敏感信息包括密码、SessionID、Cookie、CSRF/Token、IMEI、IMSI、手机号、
-MAC 和公网 IPv6。
+输出脱敏对象。H168 的复合 MCS/TX 文本若已被实机观察，会以 `radio.rawEvidence` 进入
+规范化快照，但对应的单值数值字段仍保持 `null`。敏感信息包括密码、SessionID、Cookie、
+CSRF/Token、IMEI、IMSI、手机号、MAC 和公网 IPv6。
 
 ## Adapter 契约
 

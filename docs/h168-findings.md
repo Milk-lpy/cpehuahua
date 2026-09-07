@@ -214,7 +214,8 @@ rsrp rsrq sinr rssi pci cellId tac band arfcn cqi mimoRank bler
 
 `dlMcs`、`ulMcs`、`txPower` 的原始 key 也已观察到，但 H168 返回的是复合字符串而不是
 单个数值。为避免伪造“主载波”或丢掉其他 carrier/channel，当前标准数值字段仍为
-`null`，完整字符串只在 Probe 的 parsed/raw 证据中保留。
+`null`，完整字符串在 Probe 的 parsed/raw 证据和 live 快照的 `radio.rawEvidence` 中
+保留；Dashboard 只将其标为设备原始字段，不将其当作单一数值。
 
 ```text
 nrulmcs nrdlmcs nrtxpower
