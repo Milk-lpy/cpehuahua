@@ -37,8 +37,9 @@ const ENDPOINTS = [
 ];
 
 const SENSITIVE_KEYS = new Set([
-  "password", "passwd", "pwd", "imei", "imsi", "msisdn", "phone",
-  "phonenumber", "mobilenumber", "mac", "macaddress", "ipv6", "publicipv6",
+  "password", "passwd", "pwd", "imei", "imeisvn", "imsi", "msisdn", "phone",
+  "phonenumber", "mobilenumber", "serial", "serialnumber", "sn", "iccid", "eid",
+  "mac", "macaddress", "ipv6", "publicipv6",
   "sessionid", "sesinfo", "tokinfo", "token", "csrf", "csrftoken",
   "requestverificationtoken", "firstnonce", "servernonce", "salt",
   "clientproof", "finalnonce",
@@ -62,7 +63,17 @@ function now() {
 
 function isSensitiveKey(key) {
   const normalized = String(key).replace(/[^a-z0-9]/gi, "").toLowerCase();
-  return SENSITIVE_KEYS.has(normalized) || normalized.includes("requestverificationtoken");
+  return SENSITIVE_KEYS.has(normalized)
+    || normalized.includes("requestverificationtoken")
+    || normalized.includes("imei")
+    || normalized.includes("imsi")
+    || normalized.includes("iccid")
+    || normalized.includes("mac")
+    || normalized.includes("ipv6")
+    || normalized.includes("ipaddress")
+    || normalized.includes("nonce")
+    || normalized.includes("session")
+    || normalized.includes("token");
 }
 
 function decodeXml(value) {
@@ -884,7 +895,9 @@ function metricSet(rawXml, nr, genericNrKeys) {
     rssiDbm: xmlNumber(rawXml, [nr ? "nrrssi" : "rssi"]),
     pci: xmlNumber(rawXml, pciNames),
     cellId: xmlText(rawXml, cellIdNames),
-    tac: xmlText(rawXml, [nr ? "nrtac" : "tac"]),
+    tac: xmlText(rawXml, nr
+      ? genericNrKeys ? ["nrtac", "tac"] : ["nrtac"]
+      : ["tac"]),
     band: xmlText(rawXml, bandNames),
     arfcn: xmlNumber(rawXml, arfcnNames),
     cqi: xmlNumber(rawXml, [nr ? "nrcqi0" : "cqi0", nr ? "nrcqi" : "cqi"]),
@@ -898,6 +911,20 @@ function metricSet(rawXml, nr, genericNrKeys) {
 
 function hasCellData(cell) {
   return Object.values(cell).some((value) => value !== null);
+}
+
+function hasExplicitLteSignalData(rawXml) {
+  return [
+    "earfcn",
+    "rsrp",
+    "rsrq",
+    "sinr",
+    "rssi",
+    "ulbandwidth",
+    "dlbandwidth",
+    "ul_mcs",
+    "dl_mcs",
+  ].some((name) => xmlText(rawXml, [name]) !== null);
 }
 
 function makeCell(role, technology, metrics) {
@@ -985,6 +1012,7 @@ function rateBps(rawXml, names) {
 function normalizeLiveSnapshot(results) {
   const signal = rawResult(results, "device-signal");
   const basic = rawResult(results, "device-basic-information");
+  const deviceInfo = rawResult(results, "device-information");
   const plmnDocument = rawResult(results, "net-current-plmn");
   const secondary = rawResult(results, "device-seccellinfo");
   const neighborsDocument = rawResult(results, "device-nbrcellinfo");
@@ -1003,7 +1031,9 @@ function normalizeLiveSnapshot(results) {
         : null;
   const signalScells = [];
   if (mode === "101" && hasCellData(nr)) signalScells.push(makeCell("scell", "NR", nr));
-  if (isSa && hasCellData(lte)) signalScells.push(makeCell("scell", "LTE", lte));
+  if (isSa && hasCellData(lte) && hasExplicitLteSignalData(signal)) {
+    signalScells.push(makeCell("scell", "LTE", lte));
+  }
   if (xmlText(signal, ["scc_pci"])) {
     signalScells.push(makeCell("scell", "LTE", {
       ...emptyRadio(),
@@ -1038,9 +1068,12 @@ function normalizeLiveSnapshot(results) {
     timestamp: now(),
     source: "live",
     device: {
-      model: xmlText(basic, ["devicename", "DeviceName", "model", "modelname"]),
-      firmware: xmlText(basic, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"]),
-      uptimeSeconds: xmlNumber(basic, ["uptime", "UpTime", "uptimeseconds"]),
+      model: xmlText(basic, ["devicename", "DeviceName", "model", "modelname"])
+        || xmlText(deviceInfo, ["devicename", "DeviceName", "model", "modelname"]),
+      firmware: xmlText(basic, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"])
+        || xmlText(deviceInfo, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"]),
+      uptimeSeconds: xmlNumber(basic, ["uptime", "UpTime", "uptimeseconds"])
+        ?? xmlNumber(deviceInfo, ["uptime", "UpTime", "uptimeseconds"]),
     },
     connection: {
       cellularOnline: xmlBoolean(status, ["cellularonline", "connectionstatus", "cellularstatus"]),

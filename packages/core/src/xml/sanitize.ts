@@ -6,11 +6,17 @@ const SENSITIVE_KEYS = new Set([
   "passwd",
   "pwd",
   "imei",
+  "imeisvn",
   "imsi",
   "msisdn",
   "phone",
   "phonenumber",
   "mobilenumber",
+  "serial",
+  "serialnumber",
+  "sn",
+  "iccid",
+  "eid",
   "mac",
   "macaddress",
   "ipv6",
@@ -31,7 +37,17 @@ const SENSITIVE_KEYS = new Set([
 
 function isSensitiveKey(key: string): boolean {
   const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
-  return SENSITIVE_KEYS.has(normalized) || normalized.includes("requestverificationtoken");
+  return SENSITIVE_KEYS.has(normalized)
+    || normalized.includes("requestverificationtoken")
+    || normalized.includes("imei")
+    || normalized.includes("imsi")
+    || normalized.includes("iccid")
+    || normalized.includes("mac")
+    || normalized.includes("ipv6")
+    || normalized.includes("ipaddress")
+    || normalized.includes("nonce")
+    || normalized.includes("session")
+    || normalized.includes("token");
 }
 
 function sanitizeValue(value: HuaweiXmlValue, key: string): HuaweiXmlValue {

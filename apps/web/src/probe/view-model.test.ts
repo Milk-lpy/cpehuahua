@@ -52,7 +52,7 @@ describe("probe view model", () => {
           huaweiError: null,
           transportError: null,
           rawXml: "<response><imei>secret</imei></response>",
-          sanitizedRawXml: "<response><imei>[REDACTED]</imei></response>",
+          sanitizedRawXml: "<response><imei>secret</imei></response>",
           parsed: {
             rawXml: "<response><imei>secret</imei></response>",
             rootName: "response",

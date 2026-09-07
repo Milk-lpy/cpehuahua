@@ -91,7 +91,9 @@ function metricSet(document: ParsedHuaweiXml | null, nr: boolean, genericNrKeys 
     rssiDbm: scalarNumber(document, [nr ? "nrrssi" : "rssi"]),
     pci: scalarNumber(document, pciNames),
     cellId: text(document, cellIdNames),
-    tac: text(document, [nr ? "nrtac" : "tac"]),
+    tac: text(document, nr
+      ? genericNrKeys ? ["nrtac", "tac"] : ["nrtac"]
+      : ["tac"]),
     band: text(document, bandNames),
     arfcn: scalarNumber(document, arfcnNames),
     cqi: scalarNumber(document, [nr ? "nrcqi0" : "cqi0", nr ? "nrcqi" : "cqi"]),
@@ -105,6 +107,20 @@ function metricSet(document: ParsedHuaweiXml | null, nr: boolean, genericNrKeys 
 
 function hasCellData(cell: RadioMetrics): boolean {
   return Object.values(cell).some((value) => value !== null);
+}
+
+function hasExplicitLteSignalData(document: ParsedHuaweiXml | null): boolean {
+  return [
+    "earfcn",
+    "rsrp",
+    "rsrq",
+    "sinr",
+    "rssi",
+    "ulbandwidth",
+    "dlbandwidth",
+    "ul_mcs",
+    "dl_mcs",
+  ].some((name) => text(document, [name]) !== null);
 }
 
 function makeCell(role: CpeCell["role"], technology: CpeCell["technology"], metrics: RadioMetrics): CpeCell {
@@ -249,6 +265,7 @@ export class H168Adapter implements CpeAdapter {
 
     const signal = documentFor(input, "device-signal");
     const basic = documentFor(input, "device-basic-information");
+    const deviceInfo = documentFor(input, "device-information");
     const plmnDocument = documentFor(input, "net-current-plmn");
     const sec = documentFor(input, "device-seccellinfo");
     const nbr = documentFor(input, "device-nbrcellinfo");
@@ -266,7 +283,7 @@ export class H168Adapter implements CpeAdapter {
     if (mode === "101" && hasCellData(nr)) {
       signalScells.push(makeCell("scell", "NR", nr));
     }
-    if (isSaMode(mode) && hasCellData(lte)) {
+    if (isSaMode(mode) && hasCellData(lte) && hasExplicitLteSignalData(signal)) {
       signalScells.push(makeCell("scell", "LTE", lte));
     }
     if (text(signal, ["scc_pci"])) {
@@ -299,9 +316,12 @@ export class H168Adapter implements CpeAdapter {
       if (text(signal, ["nrtxpower", "txpower"]) !== null) capabilities.txPower = "observed";
     }
     result.device = {
-      model: text(basic, ["devicename", "DeviceName", "model", "modelname"]),
-      firmware: text(basic, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"]),
-      uptimeSeconds: number(basic, ["uptime", "UpTime", "uptimeseconds"]),
+      model: text(basic, ["devicename", "DeviceName", "model", "modelname"])
+        ?? text(deviceInfo, ["devicename", "DeviceName", "model", "modelname"]),
+      firmware: text(basic, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"])
+        ?? text(deviceInfo, ["softwareversion", "SoftwareVersion", "firmware", "Software_version"]),
+      uptimeSeconds: number(basic, ["uptime", "UpTime", "uptimeseconds"])
+        ?? number(deviceInfo, ["uptime", "UpTime", "uptimeseconds"]),
     };
     result.connection = {
       cellularOnline: booleanFrom(status, ["cellularonline", "connectionstatus", "cellularstatus"]),

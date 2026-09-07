@@ -67,4 +67,25 @@ describe("Huawei XML parser", () => {
     expect(sanitized).toContain("[REDACTED]");
     expect(sanitized).toContain("-91dBm");
   });
+
+  it("redacts device identifiers and address-shaped fields observed in H168 diagnostics", () => {
+    const sanitized = sanitizeHuaweiXml(
+      "<response>"
+        + "<SerialNumber>secret-serial</SerialNumber>"
+        + "<Iccid>secret-iccid</Iccid>"
+        + "<MacAddress1>AA:BB:CC:DD:EE:FF</MacAddress1>"
+        + "<WanIPAddress>10.0.0.1</WanIPAddress>"
+        + "<WanIPv6Address>2001:db8::1</WanIPv6Address>"
+        + "<WifiMacAddrWl0>AA:BB:CC:DD:EE:00</WifiMacAddrWl0>"
+        + "<rsrp>-70dBm</rsrp>"
+        + "</response>",
+    );
+
+    expect(sanitized).not.toContain("secret-serial");
+    expect(sanitized).not.toContain("secret-iccid");
+    expect(sanitized).not.toContain("AA:BB:CC:DD:EE:FF");
+    expect(sanitized).not.toContain("10.0.0.1");
+    expect(sanitized).not.toContain("2001:db8::1");
+    expect(sanitized).toContain("<rsrp>-70dBm</rsrp>");
+  });
 });

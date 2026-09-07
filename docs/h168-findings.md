@@ -71,6 +71,50 @@ supported 结论。加密 fallback 已加入代码并通过离线测试向量；
 确认 H168 challenge/authentication 是否成功，以及返回的实际 signal/SCell/neighbor
 数据。
 
+## 第三批用户实机证据（2026-09-07）
+
+用户通过“一键复制本次全部”提供了完整的 H168-383 ProbeReport。本节只记录不含设备
+唯一标识和网络地址的字段形状；没有把用户粘贴的原始 XML 写入仓库。
+
+这次结果确认：
+
+- `device-signal`、`device-seccellinfo`、`device-nbrcellinfo`、
+  `monitoring-traffic-statistics`、`device-information` 均返回 HTTP `200` 且
+  Huawei error 为空；之前的 `crypto.subtle.importKey` 失败已经不再出现。
+- 认证后的 endpoint 可以连续读取，说明当前 Surge WebView 的纯 JavaScript 加密
+  fallback 与 H168 当前登录流程在这次设备上完成了可用验证；但 Session/Token
+  轮换细节仍未单独验证。
+- `/api/device/signal` 返回 `mode=12`，同时返回通用 `pci`、`cell_id`、`tac`、
+  `bandInfo`、`nrearfcn` 和 NR 测量字段。该样本中 `bandInfo=N78`，并观察到
+  `nrsrp=-70dBm`、`nrrsrq=-11.0dB`、`nrsinr=5dB`、`nrrssi=-47dBm`、
+  `nrcqi0=15`、`nrrank=4`、`nrbler=0`。这些是本机样本事实，不代表所有位置或
+  所有 H168 固件都会返回同样数值。
+- 同一 signal 响应还返回 `nrulbandwidth`、`nrdlbandwidth`、`nrulmcs`、
+  `nrdlmcs`、`nrtxpower`、`rrc_status` 和 `ims`。其中 MCS 与 TX power 是包含
+  carrier/channel 描述的复合字符串，当前不能安全压成单个数值；原始字段保留，
+  标准化数值仍保持 `null`。
+- `/api/device/seccellinfo` 返回一个 `nrseccell_list` 记录，`lteseccell_list`
+  为空；本次确认其 H168 形状为 `ARFCN,Band,BW,PCI,RSRP,RSRQ,RSSI,SINR`。
+- `/api/device/nbrcellinfo` 返回六个 NR 邻区记录，`nbrcell_ltelist` 为空；本次
+  确认其形状为 `ARFCN,Band,PCI,RSRP,RSRQ,RSSI,SINR`，并保留 `N77/N78` 这类原始
+  频段字符串，不替换成单一频段。
+- `/api/monitoring/traffic-statistics` 返回当前连接时间、累计流量和当前上下行速率。
+  当前速率单位仍需在更多实测中与用户路径吞吐量交叉确认，Bridge 的 `*8` 转换暂为
+  可撤销的参考实现。
+- `/api/device/information` 返回 `DeviceName=H168-383`、软件版本
+  `4.4.0.1(H1008SP7C233)`、WebUI/参数版本和 `uptime=144` 等字段。设备序列号、
+  ICCID、MAC、WAN IP 和 IPv6 只作为存在性证据，不在文档中记录原值。
+- `/api/developermode/developer-mode`、`developer-item` 和 `/api/app/atport-status`
+  均返回 HTTP `200`、Huawei error `100003`；这只能说明当前账号/固件对这些只读
+  候选请求返回明确拒绝，不能推导温度、风扇或 AT 能力。
+- `/api/net/cell-info` 返回 HTTP `200` 并包含 `cellinfo`、`lac`，但仍按 candidate
+  endpoint 处理，不能替代 signal 的标准化来源。
+
+本次用户输出也暴露了旧版脱敏规则的覆盖缺口：`SerialNumber`、`Iccid`、带后缀的
+`MacAddress*`、`WifiMacAddr*`、`WanIPAddress` 和 `WanIPv6Address` 不能只靠旧的精确
+key 集合识别。已在 core sanitizer 和 Surge bridge 同步增加这些标签/地址模式的脱敏，
+并加入测试；升级 Module 后再收集的 Probe 才是可外发的脱敏结果。
+
 ## 已知差异
 
 1. 用户指定的 `lvcdy/huawei-lte-api-go` 当前仓库实际上是 Rust crate（`Cargo.toml`
@@ -95,46 +139,63 @@ supported 结论。加密 fallback 已加入代码并通过离线测试向量；
 | `/api/device/basic_information` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；已观察设备身份和基础 key，其他值仍以实际响应为准 |
 | `/api/monitoring/status` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；保留实际 key，不从状态代码或 `SignalIcon` 猜蜂窝状态 |
 | `/api/net/current-plmn` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；保留 `FullName`/`Numeric`/`Rat`/`State` 原始值，代码含义待确认 |
-| `/api/device/signal` | `reference-claimed` H168 登录后可读 | Probe 默认读取；字段缺失为 `null` |
-| `/api/monitoring/traffic-statistics` | `reference-claimed` H168 登录后可读 | Probe 默认读取；不替代 iPhone 侧 Internet 状态 |
-| `/api/device/seccellinfo` | `reference-shape` Brovi 5G 补充端点 | Probe 默认读取但 capability 初始 `unknown` |
-| `/api/device/nbrcellinfo` | `reference-shape` Brovi 5G 补充端点 | Probe 默认读取但 capability 初始 `unknown` |
-| `/api/webserver/SesTokInfo` | `reference` cpemanager 新登录流程 | 认证状态机优先尝试；必须实机确认 |
+| `/api/device/signal` | `live-observed` H168-383 实机 HTTP 200 | 已观察 `mode=12`、通用 PCI/Cell/TAC、NR 测量和复合 MCS/TX 字段；复合值不压成单值 |
+| `/api/monitoring/traffic-statistics` | `live-observed` H168-383 实机 HTTP 200 | 已观察当前/累计流量和速率；单位与用户路径吞吐仍待交叉确认 |
+| `/api/device/seccellinfo` | `live-observed` H168-383 实机 HTTP 200 | 已观察一个 NR SCell 记录和空 LTE 列表，继续保留动态数组 |
+| `/api/device/nbrcellinfo` | `live-observed` H168-383 实机 HTTP 200 | 已观察六个 NR 邻区记录和空 LTE 列表，继续保留动态数组 |
+| `/api/webserver/SesTokInfo` | `live-observed` H168-383 实机 HTTP 200 | 本次返回成功；Cookie/Token 轮换细节仍待专门验证 |
 | `/api/user/challenge_login` | `reference` cpemanager 新登录流程 | 只实现登录 POST，不作为 Dashboard 数据 |
 | `/api/user/authentication_login` | `reference` cpemanager 新登录流程 | 只实现登录 POST，不作为 Dashboard 数据 |
-| `/api/developermode/developer-mode` | `reference-shape` lvcdy 补充端点 | 只读候选，结果不标准化 |
-| `/api/developermode/developer-item` | `reference-shape` lvcdy 补充端点 | 只读候选，结果不标准化 |
-| `/api/app/atport-status` | `reference-shape` lvcdy 补充端点 | 仅 GET 探测，禁止加入任何 POST |
-| `/api/device/information` | `reference-claimed` H168 登录后可读 | 作为设备扩展诊断，敏感字段默认脱敏 |
+| `/api/developermode/developer-mode` | `live-observed` H168-383 HTTP 200 + Huawei `100003` | 当前账号/固件拒绝；只读候选，结果不标准化 |
+| `/api/developermode/developer-item` | `live-observed` H168-383 HTTP 200 + Huawei `100003` | 当前账号/固件拒绝；只读候选，结果不标准化 |
+| `/api/app/atport-status` | `live-observed` H168-383 HTTP 200 + Huawei `100003` | 当前账号/固件拒绝；仅 GET 探测，禁止加入任何 POST |
+| `/api/device/information` | `live-observed` H168-383 实机 HTTP 200 | 已观察设备/软件/运行时间字段；敏感字段只保留脱敏值 |
+| `/api/user/state-login` | `live-observed` H168-383 实机 HTTP 200 | 已观察登录状态响应字段；不把账号状态码猜成在线状态 |
+| `/api/net/cell-info` | `live-observed` H168-383 实机 HTTP 200 | 已观察 `cellinfo`/`lac`，仍按 candidate 处理 |
 
 ## 字段状态
 
-以下字段在当前仓库没有 H168-383 实机返回证据，因此在 `CpeSnapshot` 中预留但
+以下字段在这次 H168-383 实机返回中仍没有可用读取证据，因此在 `CpeSnapshot` 中预留但
 保持 `null` 或 `unknown`：
 
 ```text
 temperatureC fanRpm cpuUsagePct memoryUsagePct qci fiveQi dlAmbr ulAmbr
-mimoRank cqi dlMcs ulMcs bler txPower
 ```
 
-`rsrp/rsrq/sinr/rssi/pci/cellId/band/arfcn` 有通用 Huawei/5G 参考形状，Adapter
-只在对应响应 key 实际出现时映射；缺失、空字符串和未知格式不会填 0，也不会用
-另一个 RAT 的数值代替。`CapabilityMatrix` 只有在 `AdapterInput.source="live"` 时
-才会把 endpoint/字段从 `unknown` 改为 `observed`；fixture 测试不会制造能力证据。
+以下字段已经在本次 `/api/device/signal` 返回中出现，并允许在 live Adapter 中标记为
+`observed`：
+
+```text
+rsrp rsrq sinr rssi pci cellId tac band arfcn cqi mimoRank bler
+```
+
+`dlMcs`、`ulMcs`、`txPower` 的原始 key 也已观察到，但 H168 返回的是复合字符串而不是
+单个数值。为避免伪造“主载波”或丢掉其他 carrier/channel，当前标准数值字段仍为
+`null`，完整字符串只在 Probe 的 parsed/raw 证据中保留。
+
+```text
+nrulmcs nrdlmcs nrtxpower
+```
+
+`CapabilityMatrix` 只有在 `AdapterInput.source="live"` 时才会把 endpoint/字段从
+`unknown` 改为 `observed`；fixture 测试不会制造能力证据。
 
 ## 待实机确认
 
-- H168 当前固件对 `/api/device/seccellinfo`、`/api/device/nbrcellinfo` 的 HTTP 状态、
-  Huawei error code、顶层 key 和 CSV 列顺序
-- `/api/device/signal` 是否使用标准 `mode`/`nr*` 字段，还是存在 H168/Brovi 专用名称
-- `mode=12`（cpemanager 的 SA 参考形状）与 `mode=101/102`（其他实现使用的形状）在
-  H168 当前固件上的实际含义，以及 generic `pci`/`cell_id` 是否属于 NR
+- `mode=12` 与 `workmode=NR-5GC` 在更多 H168 样本中的对应关系，以及 mode 变化时
+  generic `pci`/`cell_id`/`tac` 是否始终属于 NR
+- 复合 `nrulmcs`/`nrdlmcs`/`nrtxpower` 的 carrier/channel 语法，以及是否应扩展
+  标准模型为结构化数组而不是单个数值
+- `/api/monitoring/traffic-statistics` 的速率单位与 iPhone/Surge 用户路径吞吐量的
+  交叉验证
 - `SesTokInfo` 每次调用是否轮换 `SesInfo`/`TokInfo`，以及 Cookie 是否只从响应 body
   设置还是同时通过 `Set-Cookie` 设置
 - `challenge_login` 与 `authentication_login` 是否都要求 `loginflag=2`
 - 监控 API 是否在蜂窝在线但 Internet 不可达时仍返回成功；InternetOnline 必须由
   iPhone/Surge 侧连续探测判断
-- 邻区和 SCell 刷新频率、列表数量和空值约定
+- `ConnectionStatus=901`、`ServiceStatus=2`、`CurrentNetworkType=20`、`Rat=12` 等
+  数值代码的官方/多样本语义；在此之前 CellularOnline 继续保持 `null`
+- 邻区和 SCell 在切换、LTE-only、NSA 和多载波场景下的列表数量与空值约定
 
 收到用户脱敏 Probe 输出后，按 endpoint 逐项更新本表，并保留“原始 key → 标准字段”
 的证据；在更新前不扩大 supported 字段集合。

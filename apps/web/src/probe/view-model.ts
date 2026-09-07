@@ -3,7 +3,7 @@ import type {
   ProbeReport,
   ProbeResultStatus,
 } from "@cpehuahua/core";
-import { sanitizeHuaweiValue } from "@cpehuahua/core";
+import { sanitizeHuaweiValue, sanitizeHuaweiXml } from "@cpehuahua/core";
 
 export interface ProbeRow {
   id: string;
@@ -66,6 +66,7 @@ function huaweiStatus(result: EndpointProbeResult): string {
 
 export function toProbeRows(report: ProbeReport): ProbeRow[] {
   return report.endpointResults.map((result) => {
+    const sanitizedRawXml = sanitizeHuaweiXml(result.sanitizedRawXml);
     const row = {
       id: result.endpoint.id,
       label: result.endpoint.label,
@@ -76,7 +77,7 @@ export function toProbeRows(report: ProbeReport): ProbeRow[] {
       huaweiStatus: huaweiStatus(result),
       latency: formatNullable(result.latencyMs, " ms"),
       fields: result.parsedFields,
-      rawXml: result.sanitizedRawXml,
+      rawXml: sanitizedRawXml,
     };
 
     return {
@@ -103,24 +104,27 @@ export function sanitizedProbeReport(report: ProbeReport): string {
     generatedAt: report.generatedAt,
     adapterId: report.adapterId,
     gateway: report.gateway,
-    endpointResults: report.endpointResults.map((result) => ({
-      endpoint: result.endpoint,
-      status: result.status,
-      requestedAt: result.requestedAt,
-      completedAt: result.completedAt,
-      latencyMs: result.latencyMs,
-      httpStatus: result.httpStatus,
-      huaweiError: result.huaweiError,
-      transportError: result.transportError,
-      rawXml: result.sanitizedRawXml,
-      sanitizedRawXml: result.sanitizedRawXml,
-      parsed: result.parsed === null ? null : {
-        ...result.parsed,
-        rawXml: result.sanitizedRawXml,
-        data: result.parsed.data === null ? null : sanitizeHuaweiValue(result.parsed.data),
-        response: sanitizeHuaweiValue(result.parsed.response),
-      },
-      parsedFields: result.parsedFields,
-    })),
+    endpointResults: report.endpointResults.map((result) => {
+      const sanitizedRawXml = sanitizeHuaweiXml(result.sanitizedRawXml);
+      return {
+        endpoint: result.endpoint,
+        status: result.status,
+        requestedAt: result.requestedAt,
+        completedAt: result.completedAt,
+        latencyMs: result.latencyMs,
+        httpStatus: result.httpStatus,
+        huaweiError: result.huaweiError,
+        transportError: result.transportError,
+        rawXml: sanitizedRawXml,
+        sanitizedRawXml,
+        parsed: result.parsed === null ? null : {
+          ...result.parsed,
+          rawXml: sanitizedRawXml,
+          data: result.parsed.data === null ? null : sanitizeHuaweiValue(result.parsed.data),
+          response: sanitizeHuaweiValue(result.parsed.response),
+        },
+        parsedFields: result.parsedFields,
+      };
+    }),
   }, null, 2);
 }

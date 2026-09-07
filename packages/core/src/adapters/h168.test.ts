@@ -106,6 +106,83 @@ describe("H168 adapter", () => {
     expect(snapshot.cells.pcc?.band).toBe("N78");
   });
 
+  it("normalizes the observed H168 mode 12 and list shapes conservatively", () => {
+    const base = input();
+    const snapshot = new H168Adapter().normalize({
+      ...base,
+      source: "live",
+      endpointResults: {
+        ...base.endpointResults,
+        "device-basic-information": result(
+          "device-basic-information",
+          "<response><classify>cpe</classify><devicename>H168-383</devicename>"
+            + "<spreadname_en>5G CPE Ultra 6</spreadname_en></response>",
+        ),
+        "device-information": result(
+          "device-information",
+          "<response><DeviceName>H168-383</DeviceName>"
+            + "<SoftwareVersion>4.4.0.1(H1008SP7C233)</SoftwareVersion>"
+            + "<uptime>144</uptime><SerialNumber>[REDACTED]</SerialNumber></response>",
+        ),
+        "device-signal": result(
+          "device-signal",
+          "<response><mode>12</mode><pci>107</pci><cell_id>[REDACTED-CELL-ID]</cell_id>"
+            + "<tac>[REDACTED-TAC]</tac><bandInfo>N78</bandInfo><nrearfcn>627264</nrearfcn>"
+            + "<nrrsrp>-70dBm</nrrsrp><nrrsrq>-11.0dB</nrrsrq><nrsinr>5dB</nrsinr>"
+            + "<nrrssi>-47dBm</nrrssi><nrcqi0>15</nrcqi0><nrrank>4</nrrank>"
+            + "<nrbler>0</nrbler><nrulmcs>NRmcsUpCarrier1:23@256QAM</nrulmcs>"
+            + "<nrdlmcs>NRmcsDownCarrier1Code0:0@QPSK</nrdlmcs>"
+            + "<nrtxpower>PPusch:-20dBm</nrtxpower></response>",
+        ),
+        "device-seccellinfo": result(
+          "device-seccellinfo",
+          "<response><lteseccell_list></lteseccell_list>"
+            + "<nrseccell_list>627264,N78,100MHz,107,-71dBm,-10dB,-48dBm,5dB;</nrseccell_list></response>",
+        ),
+        "device-nbrcellinfo": result(
+          "device-nbrcellinfo",
+          "<response><nbrcell_ltelist></nbrcell_ltelist>"
+            + "<nbrcell_nrlist>627264,N77/N78,108,-75dBm,-12dB,-50dBm,1dB;"
+            + "627264,N77/N78,106,-157dBm,-44dB,-100dBm,-24dB;"
+            + "627264,N77/N78,410,-157dBm,-44dB,-100dBm,-24dB;"
+            + "627264,N77/N78,985,-155dBm,-44dB,-98dBm,-24dB;"
+            + "627264,N77/N78,984,-157dBm,-44dB,-100dBm,-24dB;"
+            + "627264,N77/N78,825,-157dBm,-44dB,-100dBm,-24dB;</nbrcell_nrlist></response>",
+        ),
+        "monitoring-traffic-statistics": result(
+          "monitoring-traffic-statistics",
+          "<response><CurrentDownloadRate>47554</CurrentDownloadRate>"
+            + "<CurrentUploadRate>4281</CurrentUploadRate></response>",
+        ),
+      },
+    });
+
+    expect(snapshot.device.firmware).toBe("4.4.0.1(H1008SP7C233)");
+    expect(snapshot.device.uptimeSeconds).toBe(144);
+    expect(snapshot.connection.saNsa).toBe("SA");
+    expect(snapshot.cells.pcc?.technology).toBe("NR");
+    expect(snapshot.cells.pcc?.pci).toBe(107);
+    expect(snapshot.cells.pcc?.tac).toBe("[REDACTED-TAC]");
+    expect(snapshot.cells.pcc?.rsrpDbm).toBe(-70);
+    expect(snapshot.cells.pcc?.sinrDb).toBe(5);
+    expect(snapshot.cells.pcc?.cqi).toBe(15);
+    expect(snapshot.cells.pcc?.mimoRank).toBe(4);
+    expect(snapshot.cells.pcc?.blerPct).toBe(0);
+    expect(snapshot.cells.scells).toHaveLength(1);
+    expect(snapshot.cells.scells[0]?.pci).toBe(107);
+    expect(snapshot.cells.neighbors).toHaveLength(6);
+    expect(snapshot.network.downloadBps).toBe(47554 * 8);
+    expect(snapshot.network.uploadBps).toBe(4281 * 8);
+    expect(snapshot.radio.dlMcs).toBeNull();
+    expect(snapshot.radio.txPowerDbm).toBeNull();
+    expect(snapshot.capabilities.signal).toBe("observed");
+    expect(snapshot.capabilities.secondaryCells).toBe("observed");
+    expect(snapshot.capabilities.neighbors).toBe("observed");
+    expect(snapshot.capabilities.traffic).toBe("observed");
+    expect(snapshot.capabilities.mcs).toBe("observed");
+    expect(snapshot.capabilities.txPower).toBe("observed");
+  });
+
   it("keeps all normalized values null when the endpoint is absent", () => {
     const snapshot = new H168Adapter().normalize(input({ endpointResults: {} }));
 

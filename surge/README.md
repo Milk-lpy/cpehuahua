@@ -28,8 +28,8 @@ Probe 契约上。
 H168-383 的公开/认证只读 endpoint。`/api/probe` 返回脱敏 ProbeReport，
 `/api/endpoint/<id>` 返回单个脱敏 endpoint 结果，`/api/network-probe` 返回一次不含
 响应体的用户路径样本，`/api/live` 额外返回单次 `CpeLiveReport` 和保守规范化快照。
-登录 POST 仅用于认证，不是配置写操作。真实设备
-兼容性尚未在本仓库验证。跨域访问只允许 `bridge.js` 中列出的 PWA
+登录 POST 仅用于认证，不是配置写操作。当前已在一台 H168-383 上验证部分认证和只读
+endpoint；完整设备兼容性仍未确认。跨域访问只允许 `bridge.js` 中列出的 PWA
 origin；当前 GitHub Pages 地址为 `https://milk-lpy.github.io/cpehuahua/`，不要改成任意来源。
 
 PWA 当前通过 `DevicePollingSession`/core `PollingEngine` 集中请求端点路由；`/api/live`
