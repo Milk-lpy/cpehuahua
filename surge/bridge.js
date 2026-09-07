@@ -11,9 +11,12 @@
 
 const STORE_KEY = "cpehuahua.bridge.v1";
 const DEVICE_TIMEOUT_SECONDS = 8;
-// Replace the production origin when the hosted PWA has a real domain.
+// Keep this list narrow: only the hosted PWA and local development origin may
+// read Bridge responses. The Bridge host itself is configured separately in
+// cpehuahua.sgmodule.
 const ALLOWED_WEB_ORIGINS = new Set([
-  "https://cpehuahua.example.com",
+  "https://h168huahua.es",
+  "https://www.h168huahua.es",
   "http://localhost:4173",
 ]);
 

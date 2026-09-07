@@ -23,8 +23,9 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 - 只为 Bridge 域名启用 MITM。示例使用 `cpe-bridge.example.com`；如果改成自己的
   专用域名，必须同时修改 Module 的 `[Script]` pattern、`[MITM] hostname` 和网页
   中的 Bridge URL。不要把大量无关域名加入 MITM。
-- 若 PWA 与 Bridge 不同源，在 `bridge.js` 的 `ALLOWED_WEB_ORIGINS` 中把 PWA 的
-  实际 HTTPS origin 加入白名单；不要为了省事把它改成任意来源。
+- 当前正式 PWA Origin 预留为 `https://h168huahua.es`（同时允许 `www` 版本），已经写入
+  `bridge.js` 的 `ALLOWED_WEB_ORIGINS`；本地开发仍允许 `http://localhost:4173`。
+  如果最终网页使用其他域名，必须只添加那个确切的 HTTPS origin，不要改成任意来源。
 
 ## 用户操作
 
