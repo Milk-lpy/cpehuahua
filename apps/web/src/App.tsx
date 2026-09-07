@@ -202,7 +202,8 @@ function App() {
           return next;
         });
         setLiveMonitoring(true);
-        setView("overview");
+        // Polling must never steal navigation focus. The user may be reading
+        // cells, events, device details, or Probe while snapshots continue.
       },
       onEndpointResult: (result) => {
         if (!LIVE_CORE_ENDPOINTS.has(result.endpoint.id)) return;

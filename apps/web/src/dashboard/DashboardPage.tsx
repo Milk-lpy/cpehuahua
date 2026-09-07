@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { isMirroredSecondaryCell, type CapabilityStatus, type CpeCell, type CpeEvent, type CpeSnapshot } from "@cpehuahua/core";
 import { BottomNav, type AppView } from "../ui/BottomNav";
-import { aggregationLabel, capabilityText, chartPoints, DASHBOARD_METRICS, eventDetail, eventLabel, eventTone, eventTime, formatDuration, formatMetric, metricDefinition, statusClass, statusText, type DashboardMetricId } from "./view-model";
+import { aggregationLabel, capabilityText, chartPoints, DASHBOARD_METRICS, eventDetail, eventLabel, eventTone, eventTime, formatDuration, formatMetric, metricDefinition, statusText, type DashboardMetricId } from "./view-model";
 
 interface DashboardPageProps {
   activeView: Exclude<AppView, "probe">;
@@ -30,11 +30,9 @@ function SectionTitle({ eyebrow, title, badge }: { eyebrow: string; title: strin
   return <div className="section-heading"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>{badge !== undefined && <span className="count-badge">{badge}</span>}</div>;
 }
 
-function PageHeader({ snapshot, liveMonitoring, onToggleLive, onProbe }: { snapshot: CpeSnapshot; liveMonitoring: boolean; onToggleLive: () => void; onProbe: () => void }) {
+function PageHeader({ liveMonitoring, onToggleLive, onProbe }: { snapshot: CpeSnapshot; liveMonitoring: boolean; onToggleLive: () => void; onProbe: () => void }) {
   return <header className="app-header">
-    <div className="brand-line"><span className="brand-paw" aria-hidden="true">●</span><span>CPE Huahua</span><i>read only</i></div>
-    <div className="title-row"><div><h1>{snapshot.device.model ?? "H168"}</h1><p>{snapshot.device.productName ?? "本地 5G CPE 监控"}</p></div><span className={`live-badge ${liveMonitoring ? "is-live" : ""}`}>{liveMonitoring ? "LIVE" : "PAUSED"}</span></div>
-    <div className="header-toolbar"><span>快照 {new Date(snapshot.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</span><button className="soft-button" type="button" onClick={onToggleLive}>{liveMonitoring ? "暂停实时" : "启动实时"}</button><button className="icon-button" type="button" onClick={onProbe} aria-label="打开探针">⌁</button></div>
+    <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><button className={`live-switch ${liveMonitoring ? "is-live" : ""}`} type="button" onClick={onToggleLive} aria-label={liveMonitoring ? "暂停实时监控" : "启动实时监控"}><i />{liveMonitoring ? "Live" : "已暂停"}<span aria-hidden="true">⌁</span></button><button className="header-probe" type="button" onClick={onProbe} aria-label="打开探针">⚙</button></div>
   </header>;
 }
 
@@ -57,12 +55,18 @@ function SignalRing({ value }: { value: number | null }) {
   </div>;
 }
 
-function MetricCard({ label, value, unit, color = "mint" }: { label: string; value: number | null; unit: string; color?: string }) {
-  return <article className={`metric-card metric-card--${color}`}><span>{label}</span><strong>{formatMetric(value, unit)}</strong></article>;
+function SignalBar({ label, value, unit, min, max }: { label: string; value: number | null; unit: string; min: number; max: number }) {
+  const score = value === null ? 0 : Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+  const tone = score >= 60 ? "good" : score >= 32 ? "fair" : "poor";
+  return <div className="radio-stat"><span>{label}</span><strong>{formatMetric(value, unit)}</strong><i><b className={`is-${tone}`} style={{ transform: `scaleX(${score / 100})` }} /></i></div>;
 }
 
-function StatusPill({ label, value }: { label: string; value: boolean | null }) {
-  return <span className={`state-pill state-pill--${statusClass(value)}`}><i />{label} {statusText(value)}</span>;
+function Sparkline({ history, field }: { history: readonly CpeSnapshot[]; field: "downloadBps" | "uploadBps" }) {
+  const values = history.slice(-24).map((item) => item.network[field]).filter((value): value is number => value !== null);
+  if (values.length < 2) return <span className="sparkline-empty">⌁</span>;
+  const max = Math.max(...values, 1), width = 86, height = 30;
+  const points = values.map((value, index) => `${(index / (values.length - 1)) * width},${height - (value / max) * (height - 4)}`).join(" ");
+  return <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} aria-hidden="true"><polyline points={points} /></svg>;
 }
 
 function formatRate(value: number | null): string {
@@ -87,12 +91,11 @@ function combinedBytes(download: number | null, upload: number | null): number |
 function Overview({ snapshot, history, events, networkProbeConfigured }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; events: readonly CpeEvent[]; networkProbeConfigured: boolean }) {
   const [metric, setMetric] = useState<DashboardMetricId>("rsrpDbm"), pcc = snapshot.cells.pcc;
   return <>
-    <section className="hero-card"><div className="hero-copy"><p className="eyebrow">{snapshot.connection.operatorName ?? "蜂窝网络"}</p><h2>{snapshot.connection.saNsa === "unknown" ? snapshot.connection.radioMode : `${snapshot.connection.radioMode} ${snapshot.connection.saNsa}`}</h2><div className="status-pair"><StatusPill label="蜂窝" value={snapshot.connection.cellularOnline} /><StatusPill label="Internet" value={snapshot.connection.internetOnline} /></div></div><SignalRing value={snapshot.radio.rsrpDbm} /><div className="hero-tags"><span>{aggregationLabel(snapshot)}</span><span>PCI {snapshot.radio.pci ?? "—"}</span><span>PLMN {snapshot.connection.plmn ?? "—"}</span></div></section>
-    <section className="metric-grid"><MetricCard label="RSRP" value={snapshot.radio.rsrpDbm} unit="dBm" /><MetricCard label="SINR" value={snapshot.radio.sinrDb} unit="dB" color="sun" /><MetricCard label="RSRQ" value={snapshot.radio.rsrqDb} unit="dB" color="sky" /></section>
-    <section className="soft-panel"><SectionTitle eyebrow="Serving cell" title="当前主小区" badge={pcc?.technology ?? "—"} /><div className="cell-summary"><div><b>{pcc?.band ?? "频段未返回"}</b><span>ARFCN {pcc?.arfcn ?? "—"}</span></div><div><b>{pcc?.bandwidth ?? "—"}</b><span>Cell ID {pcc?.cellId ?? "—"}</span></div></div></section>
-    <section className="soft-panel"><SectionTitle eyebrow="Traffic" title="流量统计" badge={snapshot.network.monthLastClearDate ?? undefined} /><div className="speed-grid"><div><span>↓ 实时下行</span><strong>{formatRate(snapshot.network.downloadBps)}</strong></div><div><span>↑ 实时上行</span><strong>{formatRate(snapshot.network.uploadBps)}</strong></div></div><div className="usage-grid"><span><small>本次</small><b>{formatBytes(combinedBytes(snapshot.network.currentDownloadBytes, snapshot.network.currentUploadBytes))}</b><em>{formatUptime(snapshot.network.currentConnectSeconds)}</em></span><span><small>今日</small><b>{formatBytes(snapshot.network.dayUsedBytes)}</b><em>{formatUptime(snapshot.network.dayDurationSeconds)}</em></span><span><small>本月</small><b>{formatBytes(combinedBytes(snapshot.network.monthDownloadBytes, snapshot.network.monthUploadBytes))}</b><em>{formatUptime(snapshot.network.monthDurationSeconds)}</em></span></div><p className="panel-note">{networkProbeConfigured ? `用户路径：${formatMetric(snapshot.network.pingMs, "ms")} · 丢包 ${formatMetric(snapshot.network.packetLossPct, "%")}` : "用户路径探测尚未配置，Ping 与丢包保持未验证。"}</p></section>
-    <section className="soft-panel"><SectionTitle eyebrow="Live telemetry" title="实时曲线" badge="60 秒" /><div className="metric-tabs">{DASHBOARD_METRICS.slice(0, 6).map((item) => <button key={item.id} type="button" className={metric === item.id ? "is-active" : ""} onClick={() => setMetric(item.id)}>{item.label}</button>)}</div><LineChart history={history} metric={metric} /></section>
-    <section className="soft-panel"><SectionTitle eyebrow="Latest" title="最近事件" badge={events.length} />{events.length === 0 ? <Empty text="连续监控后，变化会出现在这里。" /> : <EventList events={events.slice(-3)} />}</section>
+    <section className="hero-card hero-card--focus"><div className="hero-title"><div><h1>{snapshot.device.model ?? "H168"}</h1><p>◷ 本地监控快照 · {new Date(snapshot.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</p></div><span>{snapshot.connection.operatorName ?? "蜂窝网络"} {snapshot.connection.radioMode}</span></div><div className="signal-stage"><SignalRing value={snapshot.radio.rsrpDbm} /><aside><small>RSRP</small><strong>{formatMetric(snapshot.radio.rsrpDbm, "dBm")}</strong></aside><p>♧ 数值越大越好</p></div><div className="connection-deck"><div><b className="cellular-icon">▥</b><span><strong>蜂窝 <em>{statusText(snapshot.connection.cellularOnline)}</em></strong><small>蜂窝网络状态</small></span></div><div><b className="internet-icon">◎</b><span><strong>Internet <em>{statusText(snapshot.connection.internetOnline)}</em></strong><small>互联网连接状态</small></span></div></div></section>
+    <section className="soft-panel serving-panel"><SectionTitle eyebrow="服务小区（当前主小区 PCC）" title="" badge="⌃" /><div className="serving-identity"><span>{snapshot.connection.radioMode} {snapshot.connection.saNsa}</span><strong>{pcc?.band ?? "频段未返回"} · {pcc?.bandwidth ?? "—"}</strong><dl><div><dt>NRARFCN</dt><dd>{pcc?.arfcn ?? "—"}</dd></div><div><dt>PCI</dt><dd>{pcc?.pci ?? "—"}</dd></div><div><dt>PLMN</dt><dd>{snapshot.connection.plmn ?? "—"}</dd></div></dl></div><div className="radio-stat-grid"><SignalBar label="RSRP" value={snapshot.radio.rsrpDbm} unit="dBm" min={-125} max={-70} /><SignalBar label="RSRQ" value={snapshot.radio.rsrqDb} unit="dB" min={-25} max={-3} /><SignalBar label="RSSI" value={snapshot.radio.rssiDbm} unit="dBm" min={-105} max={-45} /><SignalBar label="SINR" value={snapshot.radio.sinrDb} unit="dB" min={-10} max={30} /></div></section>
+    <section className="soft-panel speed-panel"><SectionTitle eyebrow="实时速率" title="" badge="单位自动换算" /><div className="speed-grid speed-grid--spark"><div><b className="rate-icon rate-icon--down">↓</b><span>下载<strong>{formatRate(snapshot.network.downloadBps)}</strong></span><Sparkline history={history} field="downloadBps" /></div><div><b className="rate-icon rate-icon--up">↑</b><span>上传<strong>{formatRate(snapshot.network.uploadBps)}</strong></span><Sparkline history={history} field="uploadBps" /></div></div><div className="usage-grid"><span><small>本次</small><b>{formatBytes(combinedBytes(snapshot.network.currentDownloadBytes, snapshot.network.currentUploadBytes))}</b><em>{formatUptime(snapshot.network.currentConnectSeconds)}</em></span><span><small>今日</small><b>{formatBytes(snapshot.network.dayUsedBytes)}</b><em>{formatUptime(snapshot.network.dayDurationSeconds)}</em></span><span><small>本月</small><b>{formatBytes(combinedBytes(snapshot.network.monthDownloadBytes, snapshot.network.monthUploadBytes))}</b><em>{formatUptime(snapshot.network.monthDurationSeconds)}</em></span></div></section>
+    <section className="soft-panel telemetry-panel"><SectionTitle eyebrow="实时曲线（最近 60 秒）" title="" /><div className="metric-tabs">{DASHBOARD_METRICS.slice(0, 4).map((item) => <button key={item.id} type="button" className={metric === item.id ? "is-active" : ""} onClick={() => setMetric(item.id)}>{item.label}</button>)}</div><LineChart history={history} metric={metric} /></section>
+    <section className="soft-panel"><SectionTitle eyebrow="高速铁路事件（最近）" title="" badge={events.length} />{events.length === 0 ? <Empty text="保持实时监控，信号和小区变化会记录在这里。" /> : <EventList events={events.slice(-3)} />}{!networkProbeConfigured && <p className="panel-note">Internet 用户路径探测尚未配置，状态保持未验证。</p>}</section>
   </>;
 }
 
