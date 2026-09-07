@@ -54,6 +54,10 @@ npm run lint
 npm run dev --workspace @cpehuahua/web
 ```
 
+推送到 `main` 后，GitHub Actions 会构建并发布手机可访问的 GitHub Pages 前端：
+`https://milk-lpy.github.io/cpehuahua/`。页面本身是静态文件；实时 H168 数据仍通过
+iPhone 上的 Surge Bridge 获取，不会发送到 GitHub Pages。
+
 测试 fixture 是脱敏的参考形状，不是 H168-383 实机抓包。真实抓包只能保存到
 本地未纳入版本控制的 `fixtures/h168/live/`，整理后再提交脱敏结果。
 

@@ -1,5 +1,7 @@
 const CACHE_NAME = "cpehuahua-shell-v1";
-const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest"];
+const BASE_PATH = new URL("./", self.location).pathname;
+const API_PATH = BASE_PATH === "/" ? "/api/" : `${BASE_PATH}api/`;
+const APP_SHELL = [BASE_PATH, `${BASE_PATH}index.html`, `${BASE_PATH}manifest.webmanifest`];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -27,7 +29,7 @@ self.addEventListener("fetch", (event) => {
     event.request.method !== "GET"
     || requestUrl.origin !== self.location.origin
     // Never cache a Bridge response if a deployment happens to share origin.
-    || requestUrl.pathname.startsWith("/api/")
+    || requestUrl.pathname.startsWith(API_PATH)
   ) {
     return;
   }
@@ -41,6 +43,6 @@ self.addEventListener("fetch", (event) => {
         void caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return response;
       });
-    }).catch(() => caches.match("/index.html")),
+    }).catch(() => caches.match(`${BASE_PATH}index.html`)),
   );
 });

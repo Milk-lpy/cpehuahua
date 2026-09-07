@@ -15,8 +15,7 @@ const DEVICE_TIMEOUT_SECONDS = 8;
 // read Bridge responses. The Bridge host itself is configured separately in
 // cpehuahua.sgmodule.
 const ALLOWED_WEB_ORIGINS = new Set([
-  "https://h168huahua.es",
-  "https://www.h168huahua.es",
+  "https://milk-lpy.github.io",
   "http://localhost:4173",
 ]);
 
