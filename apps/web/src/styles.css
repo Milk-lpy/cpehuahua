@@ -140,6 +140,11 @@ dt,
   padding: 0.5rem 0.65rem;
 }
 
+.copy-all-button--prominent {
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+}
+
 .status-chip--muted {
   border-color: rgba(174, 189, 208, 0.28);
   color: #aebdd0;
@@ -175,6 +180,18 @@ dt,
 
 .url-row {
   align-items: stretch;
+}
+
+.probe-action-row {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-top: 0.7rem;
+}
+
+.probe-action-row .helper-text {
+  margin: 0;
 }
 
 input {
@@ -733,6 +750,16 @@ pre {
   .url-row {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .probe-action-row {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .probe-action-row .copy-all-button {
+    width: 100%;
   }
 
   .status-grid,

@@ -305,6 +305,21 @@ function App() {
             {loading ? "读取中…" : "读取 Probe"}
           </button>
         </div>
+        <div className="probe-action-row">
+          <p className="helper-text">读取完成后，可复制本次完整的脱敏 JSON 结果。</p>
+          <button
+            className="copy-all-button copy-all-button--prominent"
+            type="button"
+            disabled={report === null || loading}
+            onClick={() => void copyAllProbeResults()}
+          >
+            {probeCopyState === "copied"
+              ? "已复制本次全部"
+              : probeCopyState === "failed"
+                ? "复制失败，重试"
+                : "复制本次全部"}
+          </button>
+        </div>
         <label className="input-label" htmlFor="cpe-password">H168 管理密码（仅在需要登录时填写）</label>
         <input
           id="cpe-password"
@@ -377,11 +392,6 @@ function App() {
             <h2>只读探针清单</h2>
           </div>
           <div className="probe-tools">
-            {report !== null && (
-              <button className="copy-all-button" type="button" onClick={() => void copyAllProbeResults()}>
-                {probeCopyState === "copied" ? "已复制全部" : probeCopyState === "failed" ? "复制失败" : "复制本次全部"}
-              </button>
-            )}
             <span className="count-badge">{report === null ? H168_PROBE_ENDPOINTS.length : rows.length}</span>
           </div>
         </div>
