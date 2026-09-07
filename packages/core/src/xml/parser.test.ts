@@ -88,6 +88,7 @@ describe("Huawei XML parser", () => {
         + "<WanIPAddress>10.0.0.1</WanIPAddress>"
         + "<WanIPv6Address>2001:db8::1</WanIPv6Address>"
         + "<WifiMacAddrWl0>AA:BB:CC:DD:EE:00</WifiMacAddrWl0>"
+        + "<cell_id>0000000761BC1005</cell_id><tac>760101</tac>"
         + "<rsrp>-70dBm</rsrp>"
         + "</response>",
     );
@@ -97,6 +98,21 @@ describe("Huawei XML parser", () => {
     expect(sanitized).not.toContain("AA:BB:CC:DD:EE:FF");
     expect(sanitized).not.toContain("10.0.0.1");
     expect(sanitized).not.toContain("2001:db8::1");
+    expect(sanitized).not.toContain("0000000761BC1005");
+    expect(sanitized).not.toContain("760101");
     expect(sanitized).toContain("<rsrp>-70dBm</rsrp>");
+  });
+
+  it("keeps MAC filter state while redacting actual filter addresses", () => {
+    const sanitized = sanitizeHuaweiXml(
+      "<response><wifimacfilterstatus>2</wifimacfilterstatus><enable>1</enable>"
+        + "<wifimacblacklist><WifiMacFilterMac0>AA:BB:CC:DD:EE:FF</WifiMacFilterMac0>"
+        + "<wifihostname0>tablet</wifihostname0></wifimacblacklist></response>",
+    );
+
+    expect(sanitized).toContain("<wifimacfilterstatus>2</wifimacfilterstatus>");
+    expect(sanitized).toContain("<wifimacblacklist>");
+    expect(sanitized).toContain("<wifihostname0>tablet</wifihostname0>");
+    expect(sanitized).not.toContain("AA:BB:CC:DD:EE:FF");
   });
 });

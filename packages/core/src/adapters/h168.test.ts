@@ -149,7 +149,8 @@ describe("H168 adapter", () => {
         "device-seccellinfo": result(
           "device-seccellinfo",
           "<response><lteseccell_list></lteseccell_list>"
-            + "<nrseccell_list>627264,N78,100MHz,107,-71dBm,-10dB,-48dBm,5dB;</nrseccell_list></response>",
+            + "<nrseccell_list>627264,N78,100MHz,107,-71dBm,-10dB,-48dBm,5dB;"
+            + "633984,N78,100MHz,107,-72dBm,-11dB,-49dBm,4dB;</nrseccell_list></response>",
         ),
         "device-nbrcellinfo": result(
           "device-nbrcellinfo",
@@ -190,7 +191,7 @@ describe("H168 adapter", () => {
     expect(snapshot.cells.pcc?.cqi).toBe(15);
     expect(snapshot.cells.pcc?.mimoRank).toBe(4);
     expect(snapshot.cells.pcc?.blerPct).toBe(0);
-    expect(snapshot.cells.scells).toHaveLength(1);
+    expect(snapshot.cells.scells).toHaveLength(2);
     expect(snapshot.cells.scells[0]?.pci).toBe(107);
     expect(snapshot.cells.neighbors).toHaveLength(6);
     expect(snapshot.network.downloadBps).toBe(47554 * 8);

@@ -5,9 +5,12 @@ export type ControlAction =
   | "sms.delete"
   | "network.get"
   | "network.set"
+  | "network.lock"
+  | "network.unlock"
   | "network.mobile-data"
   | "clients.list"
   | "clients.block"
+  | "clients.unblock"
   | "device.reboot";
 
 export interface SmsMessage {
@@ -24,6 +27,14 @@ export interface NetworkControlState {
   networkBand: string | null;
   lteBand: string | null;
   nrBand: string | null;
+  networkOption: string | null;
+  supportedModes: string[];
+  supportedLteBands: number[];
+  lteLockMode: string | null;
+  nrLockMode: string | null;
+  lockedLteBands: number[];
+  lockedNrBands: number[];
+  lockSupported: boolean;
   mobileData: boolean | null;
 }
 
@@ -38,6 +49,9 @@ export interface ManagedClient {
   associatedSeconds: number | null;
   ipAddress: string | null;
   macAddress: string;
+  ssidIndex: string | null;
+  blocked: boolean | null;
+  canControl: boolean;
 }
 
 export interface ControlResponse<T = unknown> {

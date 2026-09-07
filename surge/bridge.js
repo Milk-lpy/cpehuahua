@@ -38,9 +38,13 @@ const REAUTH_ON_NO_RIGHTS_PATHS = new Set([
   "/api/sms/set-read",
   "/api/sms/delete-sms",
   "/api/net/net-mode",
+  "/api/net/net-mode-list",
+  "/api/net/lock-freq",
   "/api/dialup/mobile-dataswitch",
   "/api/wlan/host-list",
-  "/api/wlan/mac-filter",
+  "/api/wlan/multi-basic-settings",
+  "/api/wlan/multi-macfilter-settings-ex",
+  "/api/wlan/multi-macfilter-settings",
   "/api/device/control",
 ]);
 
@@ -63,10 +67,13 @@ const ENDPOINTS = [
   endpoint("wlan-host-list", "Connected WLAN clients", "/api/wlan/host-list", true, 10_000, "h168-live-observed"),
   endpoint("monitoring-check-notifications", "Notifications / unread SMS count", "/api/monitoring/check-notifications", true, 10_000, "h168-live-observed"),
   endpoint("sms-count", "SMS mailbox counts", "/api/sms/sms-count", true, 10_000, "h168-live-observed"),
-  endpoint("net-net-mode", "Network mode and LTE band mask", "/api/net/net-mode", true, null, "reference-shape"),
-  endpoint("net-net-mode-list", "Supported network modes and LTE bands", "/api/net/net-mode-list", true, null, "reference-shape"),
-  endpoint("dialup-mobile-dataswitch", "Mobile data switch", "/api/dialup/mobile-dataswitch", true, null, "reference-shape"),
-  endpoint("wlan-multi-macfilter-settings-ex", "WLAN client filter settings", "/api/wlan/multi-macfilter-settings-ex", true, null, "reference-shape"),
+  endpoint("net-net-mode", "Network mode and LTE band mask", "/api/net/net-mode", true, null, "h168-live-observed"),
+  endpoint("net-net-mode-list", "Supported network modes and LTE bands", "/api/net/net-mode-list", true, null, "h168-live-observed"),
+  endpoint("net-lock-freq", "LTE / NR frequency lock state", "/api/net/lock-freq", true, null, "reference-shape"),
+  endpoint("network-band-frequency-list", "Supported LTE / NR frequency list", "/config/network/bandfreqlist.xml", true, null, "reference-shape"),
+  endpoint("dialup-mobile-dataswitch", "Mobile data switch", "/api/dialup/mobile-dataswitch", true, null, "h168-live-observed"),
+  endpoint("wlan-multi-basic-settings", "WLAN SSID index mapping", "/api/wlan/multi-basic-settings", true, null, "reference-shape"),
+  endpoint("wlan-multi-macfilter-settings-ex", "WLAN client filter settings", "/api/wlan/multi-macfilter-settings-ex", true, null, "h168-live-observed"),
 ];
 
 const SENSITIVE_KEYS = new Set([
@@ -76,7 +83,9 @@ const SENSITIVE_KEYS = new Set([
   "sessionid", "sesinfo", "tokinfo", "token", "csrf", "csrftoken",
   "requestverificationtoken", "firstnonce", "servernonce", "salt",
   "clientproof", "finalnonce",
+  "cellid", "cellinfo", "tac", "lac",
 ]);
+const SAFE_MAC_FILTER_KEYS = new Set(["wifimacfilterstatus", "wifimacblacklist", "wifimacwhitelist"]);
 
 function endpoint(id, label, path, requiresAuth, intervalMs, evidence) {
   return {
@@ -96,6 +105,7 @@ function now() {
 
 function isSensitiveKey(key) {
   const normalized = String(key).replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (SAFE_MAC_FILTER_KEYS.has(normalized)) return false;
   return SENSITIVE_KEYS.has(normalized)
     || normalized.includes("requestverificationtoken")
     || normalized.includes("imei")
@@ -1454,6 +1464,83 @@ function wlanHosts(rawXml) {
   })).filter((host) => host.macAddress !== null);
 }
 
+function numericBands(values) {
+  return Array.from(new Set(values.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0 && value <= 256))).sort((a, b) => a - b);
+}
+
+function supportedModes(rawXml) {
+  return Array.from(new Set(xmlBlocks(rawXml, "Access").map((block) => decodeXml(block).trim()).filter((value) => /^[0-9A-Fa-f]{2}$/.test(value))));
+}
+
+function supportedLteBands(rawXml) {
+  return numericBands(Array.from(String(rawXml).matchAll(/LTE\s+BC(\d+)/gi), (match) => match[1]));
+}
+
+function lockInfo(rawXml, tag) {
+  const section = xmlBlocks(rawXml, tag)[0] || "";
+  return {
+    mode: xmlText(section, ["lock_mode"]),
+    bands: numericBands(xmlBlocks(section, "freq_info").map((block) => xmlText(block, ["band"])).filter(Boolean)),
+  };
+}
+
+function wlanSsidMap(rawXml) {
+  const map = new Map();
+  for (const block of xmlBlocks(rawXml, "Ssid")) {
+    const index = xmlText(block, ["Index"]);
+    const ssid = xmlText(block, ["WifiSsid"]);
+    if (index !== null && ssid !== null) map.set(ssid, index);
+  }
+  return map;
+}
+
+function macFilterDevices(container) {
+  const devices = [];
+  for (let index = 0; index < 128; index += 1) {
+    const mac = xmlText(container, ["WifiMacFilterMac" + index]);
+    if (mac === null) break;
+    if (mac) devices.push({ macAddress: mac, hostName: xmlText(container, ["wifihostname" + index]) || "" });
+  }
+  return devices;
+}
+
+function macFilterState(rawXml) {
+  return {
+    enabled: xmlText(rawXml, ["enable"]) === "1",
+    status: xmlText(rawXml, ["wifimacfilterstatus"]),
+    ssids: xmlBlocks(rawXml, "Ssid").map((block) => ({
+      index: xmlText(block, ["Index"]),
+      blacklist: macFilterDevices(xmlBlocks(block, "wifimacblacklist")[0] || ""),
+    })).filter((item) => item.index !== null),
+  };
+}
+
+function lockSection(bands) {
+  if (bands.length === 0) return "<lock_mode>0</lock_mode><freq_infos></freq_infos><all_bands></all_bands>";
+  const infos = bands.map((band) => "<freq_info><band>" + band + "</band></freq_info>").join("");
+  return "<lock_mode>3</lock_mode><freq_infos>" + infos + "</freq_infos><all_bands>" + bands.join(",") + "</all_bands>";
+}
+
+function lockRequest(lteBands, nrBands) {
+  return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><request><lte_info>" + lockSection(lteBands)
+    + "</lte_info><nr_info>" + lockSection(nrBands) + "</nr_info></request>";
+}
+
+function requireBands(payload, key) {
+  if (!Array.isArray(payload[key]) || payload[key].length > 64) throw new Error(key + " 参数无效");
+  const bands = numericBands(payload[key]);
+  if (bands.length !== payload[key].length) throw new Error(key + " 包含无效频段");
+  return bands;
+}
+
+function macFilterRequest(ssidIndex, devices) {
+  const entries = devices.map((item, index) => "<WifiMacFilterMac" + index + ">" + escapeXml(item.macAddress)
+    + "</WifiMacFilterMac" + index + "><wifihostname" + index + ">" + escapeXml(item.hostName)
+    + "</wifihostname" + index + ">").join("");
+  return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><request><Ssids><Ssid><Index>" + ssidIndex
+    + "</Index><WifiMacFilterStatus>2</WifiMacFilterStatus>" + entries + "</Ssid></Ssids></request>";
+}
+
 function requireString(payload, key, pattern, label) {
   const value = typeof payload[key] === "string" ? payload[key].trim() : "";
   if (!value || (pattern && !pattern.test(value))) throw new Error(label + "格式无效");
@@ -1501,15 +1588,29 @@ async function executeControl(context, action, payload) {
     // Huawei rotates request tokens on some firmware. Keep protected device
     // requests sequential when they share one session context.
     const mode = await authenticatedGet(context, "/api/net/net-mode");
+    const modeList = await authenticatedGet(context, "/api/net/net-mode-list");
+    const lock = await authenticatedGet(context, "/api/net/lock-freq");
     const dataSwitch = await authenticatedGet(context, "/api/dialup/mobile-dataswitch");
     const modeState = responseStatus(mode);
     const switchState = responseStatus(dataSwitch);
     if (modeState.status !== "ok") return { ...modeState, data: null };
-    return { status: switchState.status === "ok" ? "ok" : "partial", httpStatus: mode.status, huaweiError: null, data: {
+    const modeListState = responseStatus(modeList);
+    const lockState = responseStatus(lock);
+    const lteLock = lockState.status === "ok" ? lockInfo(lock.body, "lte_info") : { mode: null, bands: [] };
+    const nrLock = lockState.status === "ok" ? lockInfo(lock.body, "nr_info") : { mode: null, bands: [] };
+    return { status: switchState.status === "ok" && modeListState.status === "ok" && lockState.status === "ok" ? "ok" : "partial", httpStatus: mode.status, huaweiError: null, data: {
       networkMode: xmlText(mode.body, ["NetworkMode"]),
       networkBand: xmlText(mode.body, ["NetworkBand"]),
       lteBand: xmlText(mode.body, ["LTEBand"]),
       nrBand: xmlText(mode.body, ["NRBand"]),
+      networkOption: xmlText(mode.body, ["networkOption"]),
+      supportedModes: modeListState.status === "ok" ? supportedModes(modeList.body) : [],
+      supportedLteBands: modeListState.status === "ok" ? supportedLteBands(modeList.body) : [],
+      lteLockMode: lteLock.mode,
+      nrLockMode: nrLock.mode,
+      lockedLteBands: lteLock.bands,
+      lockedNrBands: nrLock.bands,
+      lockSupported: lockState.status === "ok",
       mobileData: switchState.status === "ok" ? xmlText(dataSwitch.body, ["dataswitch"]) === "1" : null,
     } };
   }
@@ -1518,25 +1619,91 @@ async function executeControl(context, action, payload) {
     const networkBand = requireString(payload, "networkBand", /^[0-9A-Fa-f]{1,32}$/, "NetworkBand");
     const lteBand = requireString(payload, "lteBand", /^[0-9A-Fa-f]{1,32}$/, "LTEBand");
     const nrBand = typeof payload.nrBand === "string" && /^[0-9A-Fa-f]{1,32}$/.test(payload.nrBand) ? payload.nrBand : null;
-    const fields = { NetworkMode: networkMode, NetworkBand: networkBand, LTEBand: lteBand, ...(nrBand ? { NRBand: nrBand } : {}) };
+    const networkOption = typeof payload.networkOption === "string" && /^[0-2]$/.test(payload.networkOption) ? payload.networkOption : null;
+    const fields = { NetworkMode: networkMode, NetworkBand: networkBand, LTEBand: lteBand, ...(nrBand ? { NRBand: nrBand } : {}), ...(networkOption ? { networkOption } : {}) };
     const response = await authenticatedPost(context, "/api/net/net-mode", requestXml(fields));
-    return { ...responseStatus(response), data: null };
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: null };
+    const readback = await authenticatedGet(context, "/api/net/net-mode");
+    const verified = responseStatus(readback).status === "ok"
+      && xmlText(readback.body, ["NetworkMode"])?.toUpperCase() === networkMode.toUpperCase()
+      && xmlText(readback.body, ["LTEBand"])?.toUpperCase() === lteBand.toUpperCase();
+    return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified } };
+  }
+  if (action === "network.lock") {
+    const lteBands = requireBands(payload, "lteBands");
+    const nrBands = requireBands(payload, "nrBands");
+    if (lteBands.length === 0 && nrBands.length === 0) throw new Error("至少选择一个 LTE 或 NR 频段");
+    const response = await authenticatedPost(context, "/api/net/lock-freq", lockRequest(lteBands, nrBands));
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: null };
+    const readback = await authenticatedGet(context, "/api/net/lock-freq");
+    const readState = responseStatus(readback);
+    const actualLte = readState.status === "ok" ? lockInfo(readback.body, "lte_info").bands : [];
+    const actualNr = readState.status === "ok" ? lockInfo(readback.body, "nr_info").bands : [];
+    const verified = readState.status === "ok" && lteBands.every((band) => actualLte.includes(band)) && nrBands.every((band) => actualNr.includes(band));
+    return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified, lteBands: actualLte, nrBands: actualNr } };
+  }
+  if (action === "network.unlock") {
+    const response = await authenticatedPost(context, "/api/net/lock-freq", lockRequest([], []));
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: null };
+    const readback = await authenticatedGet(context, "/api/net/lock-freq");
+    const verified = responseStatus(readback).status === "ok" && lockInfo(readback.body, "lte_info").mode === "0" && lockInfo(readback.body, "nr_info").mode === "0";
+    return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified } };
   }
   if (action === "network.mobile-data") {
     if (typeof payload.enabled !== "boolean") throw new Error("移动数据开关参数无效");
     const response = await authenticatedPost(context, "/api/dialup/mobile-dataswitch", requestXml({ dataswitch: payload.enabled ? 1 : 0 }));
-    return { ...responseStatus(response), data: null };
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: null };
+    const readback = await authenticatedGet(context, "/api/dialup/mobile-dataswitch");
+    const verified = responseStatus(readback).status === "ok" && (xmlText(readback.body, ["dataswitch"]) === "1") === payload.enabled;
+    return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified } };
   }
   if (action === "clients.list") {
     const response = await authenticatedGet(context, "/api/wlan/host-list");
-    return { ...responseStatus(response), data: { clients: responseStatus(response).status === "ok" ? wlanHosts(response.body) : [] } };
+    const basic = await authenticatedGet(context, "/api/wlan/multi-basic-settings");
+    const filters = await authenticatedGet(context, "/api/wlan/multi-macfilter-settings-ex");
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: { clients: [] } };
+    const basicOk = responseStatus(basic).status === "ok";
+    const filtersOk = responseStatus(filters).status === "ok";
+    const ssids = basicOk ? wlanSsidMap(basic.body) : new Map();
+    const filterState = filtersOk ? macFilterState(filters.body) : { enabled: false, status: null, ssids: [] };
+    const clients = wlanHosts(response.body).map((host) => {
+      const ssidIndex = host.ssid === null ? null : ssids.get(host.ssid) || null;
+      const list = filterState.ssids.find((item) => item.index === ssidIndex)?.blacklist || [];
+      return { ...host, ssidIndex, blocked: filtersOk ? list.some((item) => item.macAddress.toLowerCase() === host.macAddress.toLowerCase()) : null, canControl: basicOk && filtersOk && ssidIndex !== null };
+    });
+    for (const filteredSsid of filterState.ssids) {
+      const ssidName = Array.from(ssids.entries()).find((entry) => entry[1] === filteredSsid.index)?.[0] || null;
+      for (const device of filteredSsid.blacklist) {
+        if (clients.some((client) => client.macAddress.toLowerCase() === device.macAddress.toLowerCase())) continue;
+        clients.push({ id: null, name: device.hostName || null, hostName: device.hostName || null, manufacturer: null, deviceType: null, frequency: null, ssid: ssidName, associatedSeconds: null, ipAddress: null, macAddress: device.macAddress, ssidIndex: filteredSsid.index, blocked: true, canControl: true });
+      }
+    }
+    return { status: basicOk && filtersOk ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { clients, filterEnabled: filterState.enabled, filterStatus: filterState.status } };
   }
-  if (action === "clients.block") {
+  if (action === "clients.block" || action === "clients.unblock") {
     const macAddress = requireString(payload, "macAddress", /^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/, "MAC 地址");
+    const ssidIndex = requireString(payload, "ssidIndex", /^\d{1,3}$/, "SSID 索引");
     const hostName = typeof payload.hostName === "string" ? payload.hostName.slice(0, 64) : "CPE Huahua blocked client";
-    const body = requestXml({ wifihostname: hostName, WifiMacFilterMac: macAddress });
-    const response = await authenticatedPost(context, "/api/wlan/mac-filter", body);
-    return { ...responseStatus(response), data: null };
+    const current = await authenticatedGet(context, "/api/wlan/multi-macfilter-settings-ex");
+    if (responseStatus(current).status !== "ok") return { ...responseStatus(current), data: null };
+    const ssid = macFilterState(current.body).ssids.find((item) => item.index === ssidIndex);
+    if (!ssid) throw new Error("设备未返回目标 SSID 的过滤配置");
+    const withoutTarget = ssid.blacklist.filter((item) => item.macAddress.toLowerCase() !== macAddress.toLowerCase());
+    const devices = action === "clients.block" ? [...withoutTarget, { macAddress, hostName }] : withoutTarget;
+    const response = await authenticatedPost(context, "/api/wlan/multi-macfilter-settings", macFilterRequest(ssidIndex, devices));
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: null };
+    const readback = await authenticatedGet(context, "/api/wlan/multi-macfilter-settings-ex");
+    const readFilterState = responseStatus(readback).status === "ok" ? macFilterState(readback.body) : null;
+    const updated = readFilterState?.ssids.find((item) => item.index === ssidIndex);
+    const blocked = updated?.blacklist.some((item) => item.macAddress.toLowerCase() === macAddress.toLowerCase()) ?? null;
+    const verified = blocked !== null && blocked === (action === "clients.block") && (action !== "clients.block" || readFilterState?.enabled === true);
+    return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified, blocked } };
   }
   if (action === "device.reboot") {
     const response = await authenticatedPost(context, "/api/device/control", requestXml({ Control: 1 }));

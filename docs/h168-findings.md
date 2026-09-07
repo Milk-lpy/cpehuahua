@@ -179,6 +179,27 @@ Developer/AT 候选端点进行同样的循环重试。
 均成功，证明该固件上的状态接口需要已绑定会话。端点清单现将它标记为认证读取，使
 Probe/实时轮询在读取状态前完成登录；会话过期仍只进行一次密码支持的恢复，不循环重试。
 
+## 第七批网络与终端控制读取证据（2026-09-07 12:55）
+
+新 Probe 确认 `/api/net/net-mode` 返回 `NetworkMode=00`、`networkOption=2`、
+`NetworkBand`、`LTEBand` 和 `LTEBandOption`，但没有返回 `NRBand`。因此 H168 的 5G
+锁频不再复用通用 `NRBand` 字段，而改为先探测 `/api/net/lock-freq`；只有该 GET 成功
+时 UI 才开放 LTE/NR Band 写入。`/api/net/net-mode-list` 同时确认模式 `00/08/03`，
+以及 LTE B1/B3/B5/B7/B8/B20/B28/B32/B38/B40/B41/B42/B43/B71。
+
+`/api/dialup/mobile-dataswitch` 返回 `dataswitch=1`，把移动数据读取提升为实机观察；
+写入仍要求用户确认且必须重新读取状态。`/api/wlan/multi-macfilter-settings-ex` 返回
+13 个 SSID 索引、空黑白名单和 `enable=0`。旧的单项 `/api/wlan/mac-filter` 写入口已
+移除，改为读取 SSID 索引与当前黑名单后再向 `multi-macfilter-settings` 写回，并提供
+解除黑名单；未取得 `/api/wlan/multi-basic-settings` 的名称到索引映射时不开放按钮。
+
+本批还观察到两个 N78 100 MHz 载波（NRARFCN 627264 与 633984）。解析器保留两条
+记录，即使 Band 与 PCI 相同也不按单一 N78 去重。脱敏器此前把
+`wifimacfilterstatus`、`wifimacblacklist`、`wifimacwhitelist` 误判为 MAC 地址字段，
+现只保留这些状态/容器，同时继续脱敏其中实际的 `WifiMacFilterMacN`。
+本次导出还暴露了 Cell ID/TAC/LAC 的位置隐私风险；新版导出会一并脱敏这些字段，
+本地实时标准化仍使用设备原始值，不影响切换检测。
+
 ## 已知差异
 
 1. 用户指定的 `lvcdy/huawei-lte-api-go` 当前仓库实际上是 Rust crate（`Cargo.toml`
@@ -223,6 +244,12 @@ Probe/实时轮询在读取状态前完成登录；会话过期仍只进行一�
 | `/api/wlan/host-list` | `live-observed` H168-383 实机 HTTP 200 | 已标准化在线终端名称/类型/频段/SSID/时长；IP/MAC 脱敏后为 null |
 | `/api/monitoring/check-notifications` | `live-observed` H168-383 实机 HTTP 200 | 已标准化未读和存储已满状态；10 秒只读轮询 |
 | `/api/sms/sms-count` | `live-observed` H168-383 实机 HTTP 200 | 已标准化邮箱计数/容量；短信内容操作进入待实机回读的有界控制层 |
+| `/api/net/net-mode` | `live-observed` H168-383 实机 HTTP 200 | 已观察模式、LTE 掩码和 networkOption；该固件不返回 NRBand |
+| `/api/net/net-mode-list` | `live-observed` H168-383 实机 HTTP 200 | 已观察模式 00/08/03 和设备支持的 LTE Band 集合 |
+| `/api/dialup/mobile-dataswitch` | `live-observed` H168-383 实机 HTTP 200 | 已观察移动数据读取状态；写入仍待用户操作后的回读证据 |
+| `/api/wlan/multi-macfilter-settings-ex` | `live-observed` H168-383 实机 HTTP 200 | 已观察 13 个 SSID 索引、空黑白名单和 enable=0；写入尚未验证 |
+| `/api/net/lock-freq` | `reference-shape` | 新增 GET Probe；读取成功前禁用 LTE/NR 锁频写入 |
+| `/api/wlan/multi-basic-settings` | `reference-shape` | 新增 GET Probe；用于把在线终端 SSID 名称映射到过滤索引 |
 
 ## 有界控制阶段（待实机回读）
 
@@ -233,9 +260,9 @@ Probe/实时轮询在读取状态前完成登录；会话过期仍只进行一�
 | 功能 | Endpoint | 当前证据 |
 | --- | --- | --- |
 | 短信列表/发送/已读/删除 | `/api/sms/sms-list`、`send-sms`、`set-read`、`delete-sms` | HiLink 参考形状；H168 仅 `sms-count` 已实测 |
-| 移动数据 | `/api/dialup/mobile-dataswitch` | HiLink 参考形状，新增 GET Probe |
-| 网络模式和 Band | `/api/net/net-mode` | LTE/NR `LTEBand`/`NRBand` 参考形状，新增 GET Probe；写入后必须重新读取 |
-| 终端断网 | `/api/wlan/mac-filter` | 通用 Huawei 兼容路径；当前 H168 未验证且尚无可靠撤销路径 |
+| 移动数据 | `/api/dialup/mobile-dataswitch` | H168 GET 已实测；POST 后仍需回读 |
+| 网络模式和 Band | `/api/net/net-mode`、`/api/net/lock-freq` | net-mode GET 已实测；lock-freq 读写形状待新 Probe/操作回读 |
+| 终端断网/恢复 | `/api/wlan/multi-macfilter-settings-ex`、`multi-macfilter-settings` | 过滤 GET 已实测；按 SSID 保留现有黑名单并提供撤销，POST 待回读 |
 | 设备重启 | `/api/device/control` + `Control=1` | 多个 HiLink 实现一致，当前 H168 未验证 |
 
 没有开放任意 endpoint/XML 透传，也没有开放恢复出厂、升级、关机、AT/开发者模式。

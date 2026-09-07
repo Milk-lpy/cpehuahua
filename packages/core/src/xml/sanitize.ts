@@ -33,10 +33,23 @@ const SENSITIVE_KEYS = new Set([
   "salt",
   "clientproof",
   "finalnonce",
+  "cellid",
+  "cellinfo",
+  "tac",
+  "lac",
+]);
+
+// These are MAC-filter containers or state flags, not hardware addresses.
+// Actual WifiMacFilterMacN values are still redacted by the checks below.
+const SAFE_MAC_FILTER_KEYS = new Set([
+  "wifimacfilterstatus",
+  "wifimacblacklist",
+  "wifimacwhitelist",
 ]);
 
 function isSensitiveKey(key: string): boolean {
   const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (SAFE_MAC_FILTER_KEYS.has(normalized)) return false;
   return SENSITIVE_KEYS.has(normalized)
     || normalized.includes("requestverificationtoken")
     || normalized.includes("imei")
