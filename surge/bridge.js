@@ -649,15 +649,25 @@ function contextFromRequest() {
   const rememberPassword = typeof payload.rememberPassword === "boolean"
     ? payload.rememberPassword
     : stored.rememberPassword === true;
+  const cookies = rememberSession && stored.cookies && typeof stored.cookies === "object"
+    ? { ...stored.cookies }
+    : {};
+  const csrfToken = rememberSession && typeof stored.csrfToken === "string"
+    ? stored.csrfToken
+    : null;
   return {
     baseUrl: null,
-    cookies: rememberSession && stored.cookies && typeof stored.cookies === "object" ? { ...stored.cookies } : {},
-    csrfToken: rememberSession && typeof stored.csrfToken === "string" ? stored.csrfToken : null,
+    cookies,
+    csrfToken,
     password: payloadPassword || (rememberPassword ? storedPassword : ""),
     username: typeof payload.username === "string" && payload.username ? payload.username : "admin",
     rememberSession,
     rememberPassword,
-    authenticated: false,
+    // Endpoint routes are independent Surge requests. Reuse the persisted
+    // session directly instead of replaying the login preflight for every
+    // 1-second signal/traffic request. The endpoint itself remains the
+    // authority; an explicit 125002/125003 response triggers one re-login.
+    authenticated: Boolean(csrfToken && cookieHeader(cookies)),
   };
 }
 
@@ -779,7 +789,18 @@ async function authenticatedGet(context, path) {
     reauthenticationAttempted = true;
     await login(context, true);
   }
-  let response = await contextRequest(context, "GET", path, authHeaders(context, context.csrfToken));
+  let response;
+  try {
+    response = await contextRequest(context, "GET", path, authHeaders(context, context.csrfToken));
+  } catch (error) {
+    // Some H168 firmware versions close the socket instead of returning
+    // 125003 when the persisted session is stale. If this request carries a
+    // password, rebuild the session once and retry the endpoint.
+    if (!context.password || reauthenticationAttempted) throw error;
+    reauthenticationAttempted = true;
+    await login(context, true);
+    response = await contextRequest(context, "GET", path, authHeaders(context, context.csrfToken));
+  }
   const parsed = parseXml(response.body);
   if (isSessionInvalid(response, parsed) && !reauthenticationAttempted) {
     // Exactly one re-authentication attempt; no recursive retry.

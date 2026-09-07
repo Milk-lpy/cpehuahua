@@ -60,6 +60,13 @@ const LIVE_CORE_ENDPOINTS = new Set([
   "monitoring-traffic-statistics",
 ]);
 
+// Candidate/developer endpoints are useful for Probe diagnostics but should
+// not be part of the 1-second live loop. Keep the one-time device info read
+// for the device card and leave all exploratory reads in Probe only.
+const LIVE_ENDPOINTS = H168_PROBE_ENDPOINTS.filter((endpoint) => (
+  LIVE_CORE_ENDPOINTS.has(endpoint.id) || endpoint.id === "device-information"
+));
+
 function liveEndpointError(result: EndpointProbeResult): string {
   const detail = result.transportError
     ?? (result.huaweiError?.code === null || result.huaweiError?.code === undefined
@@ -169,6 +176,7 @@ function App() {
     const configuredProbeUrl = networkProbeUrl.trim();
     const networkClient = new SurgeNetworkProbeClient(bridgeUrl);
     const session = new DevicePollingSession(client.read.bind(client), {
+      endpoints: LIVE_ENDPOINTS,
       getGateway: () => client.gateway,
       ...(configuredProbeUrl
         ? { networkProbe: () => networkClient.probe(configuredProbeUrl) }
