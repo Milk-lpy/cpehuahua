@@ -34,6 +34,17 @@ export interface DeviceIdentity {
   uptimeSeconds: Nullable<number>;
 }
 
+/**
+ * Huawei sometimes returns MCS and TX power as a carrier/channel expression,
+ * not as one scalar. Keep that evidence separate from the normalized numeric
+ * fields so the UI can show the device text without inventing a number.
+ */
+export interface RadioRawFields {
+  dlMcs: Nullable<string>;
+  ulMcs: Nullable<string>;
+  txPower: Nullable<string>;
+}
+
 export interface ConnectionState {
   /** Cellular registration/radio state; intentionally separate from Internet. */
   cellularOnline: Nullable<boolean>;
@@ -60,6 +71,8 @@ export interface RadioMetrics {
   ulMcs: Nullable<number>;
   blerPct: Nullable<number>;
   txPowerDbm: Nullable<number>;
+  /** Present only when the device returned a non-scalar radio expression. */
+  rawEvidence?: RadioRawFields;
 }
 
 export interface CpeCell extends RadioMetrics {

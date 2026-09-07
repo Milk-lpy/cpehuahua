@@ -175,6 +175,9 @@ describe("H168 adapter", () => {
     expect(snapshot.network.uploadBps).toBe(4281 * 8);
     expect(snapshot.radio.dlMcs).toBeNull();
     expect(snapshot.radio.txPowerDbm).toBeNull();
+    expect(snapshot.radio.rawEvidence?.dlMcs).toBe("NRmcsDownCarrier1Code0:0@QPSK");
+    expect(snapshot.radio.rawEvidence?.ulMcs).toBe("NRmcsUpCarrier1:23@256QAM");
+    expect(snapshot.radio.rawEvidence?.txPower).toBe("PPusch:-20dBm");
     expect(snapshot.capabilities.signal).toBe("observed");
     expect(snapshot.capabilities.secondaryCells).toBe("observed");
     expect(snapshot.capabilities.neighbors).toBe("observed");

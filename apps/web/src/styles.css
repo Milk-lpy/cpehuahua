@@ -659,6 +659,20 @@ pre {
   text-align: right;
 }
 
+.raw-radio-evidence {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+}
+
+.raw-radio-evidence .detail-list {
+  margin-top: 0.65rem;
+}
+
+.raw-radio-evidence .helper-text {
+  margin: 0.7rem 0 0;
+}
+
 .value-null {
   color: #7788a0;
 }

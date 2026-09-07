@@ -1,5 +1,11 @@
 import type { CpeAdapter, AdapterIdentification, AdapterInput } from "../types/adapter";
-import type { CpeCell, CpeSnapshot, CapabilityMatrix, RadioMetrics } from "../types/model";
+import type {
+  CpeCell,
+  CpeSnapshot,
+  CapabilityMatrix,
+  RadioMetrics,
+  RadioRawFields,
+} from "../types/model";
 import type { EndpointProbeResult } from "../types/probe";
 import { findHuaweiField, numberOfHuaweiField, textOfHuaweiField } from "../xml/parser";
 import { H168_PROBE_ENDPOINTS } from "../probe/endpoints";
@@ -32,6 +38,15 @@ function scalarNumber(document: ParsedHuaweiXml | null, names: readonly string[]
     return null;
   }
   return number(document, names);
+}
+
+function rawRadioFields(document: ParsedHuaweiXml | null, nr: boolean): RadioRawFields | null {
+  const fields: RadioRawFields = {
+    dlMcs: text(document, nr ? ["nrdlmcs"] : ["dl_mcs", "dlmcs"]),
+    ulMcs: text(document, nr ? ["nrulmcs"] : ["ul_mcs", "ulmcs"]),
+    txPower: text(document, nr ? ["nrtxpower"] : ["txpower"]),
+  };
+  return Object.values(fields).some((value) => value !== null) ? fields : null;
 }
 
 function booleanFrom(document: ParsedHuaweiXml | null, names: readonly string[]): boolean | null {
@@ -84,6 +99,7 @@ function metricSet(document: ParsedHuaweiXml | null, nr: boolean, genericNrKeys 
   const arfcnNames = nr
     ? genericNrKeys ? ["nrearfcn", "nrarfcn", "earfcn"] : ["nrearfcn", "nrarfcn"]
     : ["earfcn", "arfcn"];
+  const rawEvidence = rawRadioFields(document, nr);
   return {
     rsrpDbm: scalarNumber(document, [nr ? "nrrsrp" : "rsrp"]),
     rsrqDb: scalarNumber(document, [nr ? "nrrsrq" : "rsrq"]),
@@ -102,6 +118,7 @@ function metricSet(document: ParsedHuaweiXml | null, nr: boolean, genericNrKeys 
     ulMcs: scalarNumber(document, [nr ? "nrulmcs" : "ul_mcs", nr ? "nrumcs" : "ulmcs"]),
     blerPct: scalarNumber(document, [nr ? "nrbler" : "bler"]),
     txPowerDbm: scalarNumber(document, [nr ? "nrtxpower" : "txpower"]),
+    ...(rawEvidence === null ? {} : { rawEvidence }),
   };
 }
 

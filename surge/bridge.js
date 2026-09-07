@@ -857,6 +857,15 @@ function xmlBoolean(rawXml, names) {
   return null;
 }
 
+function rawRadioFields(rawXml, nr) {
+  const fields = {
+    dlMcs: xmlText(rawXml, nr ? ["nrdlmcs"] : ["dl_mcs", "dlmcs"]),
+    ulMcs: xmlText(rawXml, nr ? ["nrulmcs"] : ["ul_mcs", "ulmcs"]),
+    txPower: xmlText(rawXml, nr ? ["nrtxpower"] : ["txpower"]),
+  };
+  return Object.values(fields).some((value) => value !== null) ? fields : null;
+}
+
 function emptyRadio() {
   return {
     rsrpDbm: null,
@@ -888,6 +897,7 @@ function metricSet(rawXml, nr, genericNrKeys) {
   const arfcnNames = nr
     ? (genericNrKeys ? ["nrearfcn", "nrarfcn", "earfcn"] : ["nrearfcn", "nrarfcn"])
     : ["earfcn", "arfcn"];
+  const rawEvidence = rawRadioFields(rawXml, nr);
   return {
     rsrpDbm: xmlNumber(rawXml, [nr ? "nrrsrp" : "rsrp"]),
     rsrqDb: xmlNumber(rawXml, [nr ? "nrrsrq" : "rsrq"]),
@@ -906,6 +916,7 @@ function metricSet(rawXml, nr, genericNrKeys) {
     ulMcs: xmlNumber(rawXml, [nr ? "nrulmcs" : "ul_mcs", nr ? "nrumcs" : "ulmcs"]),
     blerPct: xmlNumber(rawXml, [nr ? "nrbler" : "bler"]),
     txPowerDbm: xmlNumber(rawXml, [nr ? "nrtxpower" : "txpower"]),
+    ...(rawEvidence === null ? {} : { rawEvidence }),
   };
 }
 

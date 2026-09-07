@@ -162,6 +162,11 @@ export function DashboardPage({
     ["DL AMBR", snapshot.extended.dlAmbr, "bps"],
     ["UL AMBR", snapshot.extended.ulAmbr, "bps"],
   ]);
+  const rawRadioItems = snapshot === null ? [] : presentItems([
+    ["MCS (DL) 原始", snapshot.radio.rawEvidence?.dlMcs ?? null],
+    ["MCS (UL) 原始", snapshot.radio.rawEvidence?.ulMcs ?? null],
+    ["TX Power 原始", snapshot.radio.rawEvidence?.txPower ?? null],
+  ]);
 
   if (snapshot === null) {
     return (
@@ -297,6 +302,13 @@ export function DashboardPage({
             ["BLER", snapshot.radio.blerPct, "%"],
             ["TX Power", snapshot.radio.txPowerDbm, "dBm"],
           ]} />
+          {rawRadioItems.length > 0 && (
+            <div className="raw-radio-evidence">
+              <p className="eyebrow">Observed raw fields</p>
+              <DefinitionList items={rawRadioItems} />
+              <p className="helper-text">设备返回的是复合文本，保留原文，不压缩成单一数值。</p>
+            </div>
+          )}
         </section>
         <section className="panel">
           <div className="section-heading"><div><p className="eyebrow">Network Quality</p><h2>用户路径</h2></div></div>
