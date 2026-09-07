@@ -1,4 +1,4 @@
-# Surge Module 安装与 H168 实机 Probe
+# Surge Module 安装与 H168 实时监控
 
 当前 `surge/bridge.js` 是本地有界 Bridge：它会发现 IPv4 默认网关、先读取
 `basic_information` 确认 H168-383，再读取公开和认证 endpoint。`/api/probe` 返回
@@ -35,25 +35,15 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 ## 用户操作
 
 1. 确认 Surge Module 已启用，并确认 Safari 的 Bridge URL 是专用 HTTPS URL。
-2. 打开 CPE Huahua Probe 页面。
-3. 页面自动使用 Bridge 请求；首次需要在“管理密码”框输入 H168 管理密码，用户名
-   默认由 Bridge 使用 `admin`，不要求输入 URL。
-4. 建议首次只勾选 `Remember Session`，保持 `Remember Password` 关闭。
-5. 点击“读取 Probe”。Bridge 在 Surge 本地依次探测 endpoint，页面展示 HTTP 状态、
-   Huawei error、延迟、完整 parsed fields 和脱敏 RAW XML。进入 Dashboard 后可启动
-   当前版本按 endpoint 周期运行的集中轮询。首次轮询建议保持 `Remember Session` 开启，
-   这样端点请求之间可以复用本地 Session/Cookie；关闭它时，认证端点可能需要每次重新
-   登录。
-6. 需要反馈数据时，在“只读探针清单”标题右侧点击 `复制本次全部`。它会把本次运行的
-   所有 endpoint、时间戳、状态、结构化解析结果、字段列表和脱敏 RAW XML 合并为一个
-   JSON，方便一次性复制。也可以在单个 endpoint 卡片中点击 `Copy Sanitized Result`。
-   不要发送浏览器 Network 导出、完整 Cookie、密码或未脱敏 RAW XML；重新点击“读取
-   Probe”时，页面会先清除上一次的探测结果。
-
-如果要记录 Internet 可达性，在页面填写一个自己信任、低负载且返回 2xx/3xx 的 HTTPS
-探测地址。地址只保存在本机浏览器设置，并通过 `/api/network-probe` 交给 Surge 本地
-访问；不填写时 InternetOnline、Ping、Loss、Jitter 保持 `null`。这里的延迟是 HTTP
-用户路径延迟，不是 ICMP Ping。
+2. 打开 CPE Huahua 登录界面，输入 H168 管理密码；用户名仍由 Bridge 使用 `admin`，
+   不需要输入 URL。
+3. 认证成功后会直接进入概览，并自动启动按 endpoint 周期运行的实时抓取。
+   管理密码错误、Bridge 不可达或设备未确认时，错误会显示在登录界面。
+4. 需要自动登录时勾选“记住密码并自动登录”。网页只保存这个偏好开关；原始密码、
+   Session/Cookie/CSRF 只在 Surge 的本地持久存储中保存，不写入浏览器存储，也不发送
+   到远端服务。
+5. 进入概览后，控制、锁频、设备和短信继续使用同一认证会话；实时抓取可在顶部暂停或
+   重新启动。诊断 endpoint 仍由 Bridge 内部提供，不作为主界面入口。
 
 密码通过 POST body 发往专用 Bridge URL，由匹配的 Surge `http-request` script
 在本地拦截；它不会被 Bridge 转发到远端服务器。若 Surge 没有启用或 pattern/MITM
@@ -63,8 +53,8 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 
 - 页面显示“未发现默认网关”：确认仍连接 H168 Wi-Fi，并检查 Surge 是否接管请求。
 - `basic_information` 失败：记录 HTTP 状态、页面错误和脱敏结果；不要继续猜测 IP。
-- 登录失败或 endpoint 返回 `125003`：保留对应卡片的 Huawei error、parsed fields
-  和脱敏 RAW XML。不要反复快速提交密码，以免触发设备登录限制。
+- 登录失败或 endpoint 返回 `125003`：记录登录界面错误和 Surge 日志中的错误码。
+  不要反复快速提交密码，以免触发设备登录限制。
 - 运行时数据 endpoint 返回 `100003`：更新 Module 后重试；Bridge 只会在本次请求明确带有
   密码时对这类数据端点自动重建一次认证，持续的 `100003` 仍按设备权限/固件差异保留，
   不能改成空数据。
@@ -72,8 +62,8 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
   404/`100002`/`100003`：这属于能力/权限证据，不能改成 `0` 或用其他指标代替；
   把结果发回后再更新 `docs/h168-findings.md`。
 
-Bridge 的持久化状态使用 Surge 的 `$persistentStore`：`Remember Session` 保存
-本地 Session/Cookie/CSRF 状态，`Remember Password` 才保存密码；二者独立。V1 不
+Bridge 的持久化状态使用 Surge 的 `$persistentStore`：实时登录默认复用本地
+Session/Cookie/CSRF；勾选“记住密码并自动登录”后才保存密码。二者独立。V1 不
 使用 TCP 20249、Telnet 或 AT。短信正文/号码和控制页终端 IP/MAC 只在当前页面内存中
 展示，不写入浏览器快照；重启、断网、删除短信和锁频均要求二次确认。
 

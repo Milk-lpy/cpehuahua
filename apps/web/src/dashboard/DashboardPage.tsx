@@ -6,7 +6,7 @@ import { H168ControlClient } from "../control/client";
 import { aggregationLabel, capabilityText, chartPoints, DASHBOARD_METRICS, eventDetail, eventLabel, eventTone, eventTime, formatDuration, formatMetric, metricDefinition, statusText, type DashboardMetricId } from "./view-model";
 
 interface DashboardPageProps {
-  activeView: Exclude<AppView, "probe">;
+  activeView: AppView;
   snapshot: CpeSnapshot | null;
   history: readonly CpeSnapshot[];
   events: readonly CpeEvent[];
@@ -15,6 +15,7 @@ interface DashboardPageProps {
   liveError: string | null;
   networkProbeConfigured: boolean;
   onToggleLive: () => void;
+  onRetryLive: () => void;
   onNavigate: (view: AppView) => void;
   onClearCache: () => void;
   controlClient: H168ControlClient;
@@ -33,9 +34,9 @@ function SectionTitle({ eyebrow, title, badge }: { eyebrow: string; title: strin
   return <div className="section-heading"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>{badge !== undefined && <span className="count-badge">{badge}</span>}</div>;
 }
 
-function PageHeader({ liveMonitoring, onToggleLive, onProbe }: { snapshot: CpeSnapshot; liveMonitoring: boolean; onToggleLive: () => void; onProbe: () => void }) {
+function PageHeader({ liveMonitoring, onToggleLive }: { liveMonitoring: boolean; onToggleLive: () => void }) {
   return <header className="app-header">
-    <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><button className={`live-switch ${liveMonitoring ? "is-live" : ""}`} type="button" onClick={onToggleLive} aria-label={liveMonitoring ? "暂停实时监控" : "启动实时监控"}><i />{liveMonitoring ? "Live" : "已暂停"}<span aria-hidden="true">⌁</span></button><button className="header-probe" type="button" onClick={onProbe} aria-label="打开探针">⚙</button></div>
+    <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><button className={`live-switch ${liveMonitoring ? "is-live" : ""}`} type="button" onClick={onToggleLive} aria-label={liveMonitoring ? "暂停实时监控" : "启动实时监控"}><i />{liveMonitoring ? "Live" : "已暂停"}<span aria-hidden="true">⌁</span></button></div>
   </header>;
 }
 
@@ -136,6 +137,6 @@ function Empty({ text }: { text: string }) { return <div className="empty-state"
 
 export function DashboardPage(props: DashboardPageProps) {
   const { snapshot, activeView, liveMonitoring, liveError, cached, onNavigate } = props;
-  if (snapshot === null) return <main className="app-shell"><header className="app-header"><div className="brand-line"><span className="brand-paw">●</span><span>CPE Huahua</span><i>read only</i></div><h1>等待本地快照</h1><p className="lede">先在探针页连接 Surge Bridge 并读取 H168。</p><button type="button" onClick={() => onNavigate("probe")}>打开探针</button></header>{liveError && <div className="error-banner">{liveError}</div>}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
-  return <main className="app-shell dashboard-shell"><PageHeader snapshot={snapshot} liveMonitoring={liveMonitoring} onToggleLive={props.onToggleLive} onProbe={() => onNavigate("probe")} />{liveError && <div className="error-banner dashboard-error">{liveError}</div>}{snapshot.source !== "live" && <div className="evidence-banner">当前为 {snapshot.source === "fixture" ? "fixture 参考" : "未知来源"}，不代表实机验证。</div>}{cached && <div className="evidence-banner evidence-banner--cached">正在显示浏览器保存的最近快照，启动实时后才会更新。</div>}{activeView === "overview" && <Overview snapshot={snapshot} history={props.history} events={props.events} networkProbeConfigured={props.networkProbeConfigured} />}{activeView === "control" && <ControlPage client={props.controlClient} />}{activeView === "cells" && <BandLockPage client={props.controlClient} snapshot={snapshot} />}{activeView === "device" && <DevicePage snapshot={snapshot} cached={cached} onClearCache={props.onClearCache} controlClient={props.controlClient} />}{activeView === "messages" && <MessagesPage client={props.controlClient} />}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
+  if (snapshot === null) return <main className="app-shell"><header className="app-header"><div className="brand-line"><span className="brand-paw">●</span><strong>CPE 花花</strong><i>已登录</i></div><h1>正在连接 H168</h1><p className="lede">认证已通过，正在读取第一份实时快照。</p><button className="primary-button" type="button" onClick={props.onRetryLive} disabled={liveMonitoring}>{liveMonitoring ? "实时抓取中…" : "重新连接"}</button></header>{liveError && <div className="error-banner" role="alert">{liveError}</div>}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
+  return <main className="app-shell dashboard-shell"><PageHeader liveMonitoring={liveMonitoring} onToggleLive={props.onToggleLive} />{liveError && <div className="error-banner dashboard-error" role="alert">{liveError}</div>}{snapshot.source !== "live" && <div className="evidence-banner">当前为 {snapshot.source === "fixture" ? "fixture 参考" : "未知来源"}，不代表实机验证。</div>}{cached && <div className="evidence-banner evidence-banner--cached">正在显示浏览器保存的最近快照，实时连接建立后会更新。</div>}{activeView === "overview" && <Overview snapshot={snapshot} history={props.history} events={props.events} networkProbeConfigured={props.networkProbeConfigured} />}{activeView === "control" && <ControlPage client={props.controlClient} />}{activeView === "cells" && <BandLockPage client={props.controlClient} snapshot={snapshot} />}{activeView === "device" && <DevicePage snapshot={snapshot} cached={cached} onClearCache={props.onClearCache} controlClient={props.controlClient} />}{activeView === "messages" && <MessagesPage client={props.controlClient} />}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
 }

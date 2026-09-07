@@ -1,4 +1,4 @@
-export type AppView = "overview" | "control" | "cells" | "device" | "messages" | "probe";
+export type AppView = "overview" | "control" | "cells" | "device" | "messages";
 
 interface IconProps { name: AppView }
 
@@ -11,7 +11,6 @@ function Icon({ name }: IconProps) {
       {name === "cells" && <><circle {...common} cx="12" cy="12" r="2.2" /><path {...common} d="M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7M5.5 18.5a9.2 9.2 0 0 1 0-13M18.5 5.5a9.2 9.2 0 0 1 0 13" /></>}
       {name === "device" && <><rect {...common} x="6" y="3" width="12" height="18" rx="3" /><path {...common} d="M10 6h4M10.5 18h3" /></>}
       {name === "messages" && <><path {...common} d="M4 5.5h16v11H9l-5 3v-14Z" /><path {...common} d="M8 9h8M8 12.5h5" /></>}
-      {name === "probe" && <><circle {...common} cx="12" cy="12" r="3" /><path {...common} d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" /></>}
     </svg>
   );
 }
@@ -22,7 +21,6 @@ const ITEMS: ReadonlyArray<{ id: AppView; label: string }> = [
   { id: "cells", label: "锁频" },
   { id: "device", label: "设备" },
   { id: "messages", label: "短信" },
-  { id: "probe", label: "探针" },
 ];
 
 export function BottomNav({ active, onNavigate }: { active: AppView; onNavigate: (view: AppView) => void }) {

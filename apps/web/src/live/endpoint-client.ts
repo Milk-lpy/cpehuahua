@@ -1,3 +1,4 @@
+import { H168_PROBE_ENDPOINTS } from "@cpehuahua/core";
 import type { EndpointProbeResult, ProbeEndpoint } from "@cpehuahua/core";
 
 interface EndpointBridgePayload {
@@ -9,6 +10,7 @@ interface EndpointBridgePayload {
 export interface EndpointClientOptions {
   getPassword?: () => string;
   rememberSession?: () => boolean;
+  rememberPassword?: () => boolean;
   fetcher?: typeof fetch;
   onGateway?: (gateway: string | null) => void;
 }
@@ -80,11 +82,20 @@ function isHardSessionFailure(result: EndpointProbeResult, endpoint: ProbeEndpoi
       || result.huaweiError?.code === 125003);
 }
 
+function isAuthenticationFailure(result: EndpointProbeResult): boolean {
+  const transportError = result.transportError ?? "";
+  return result.huaweiError?.code === 125002
+    || result.huaweiError?.code === 125003
+    || result.huaweiError?.code === 100003
+    || /(?:authentication_login|challenge_login|100003|125002|125003)/i.test(transportError);
+}
+
 /** Reads one endpoint through the local Surge Bridge; it never contacts Huawei directly. */
 export class H168EndpointClient {
   private readonly bridgeUrl: string;
   private readonly getPassword: () => string;
   private readonly rememberSession: () => boolean;
+  private readonly rememberPassword: () => boolean;
   private readonly fetcher: typeof fetch;
   private readonly onGateway: ((gateway: string | null) => void) | undefined;
   private deviceConfirmed = false;
@@ -96,12 +107,31 @@ export class H168EndpointClient {
     this.bridgeUrl = bridgeUrl;
     this.getPassword = options.getPassword ?? (() => "");
     this.rememberSession = options.rememberSession ?? (() => true);
+    this.rememberPassword = options.rememberPassword ?? (() => false);
     this.fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
     this.onGateway = options.onGateway;
   }
 
   get gateway(): string | null {
     return this.latestGateway;
+  }
+
+  async authenticate(): Promise<void> {
+    const basic = H168_PROBE_ENDPOINTS.find((item) => item.id === "device-basic-information");
+    const status = H168_PROBE_ENDPOINTS.find((item) => item.id === "monitoring-status");
+    if (!basic || !status) throw new Error("H168 认证端点未配置");
+
+    const basicResult = await this.read(basic);
+    if (basicResult.status !== "ok") {
+      throw new Error(basicResult.transportError ?? "无法确认 H168 设备");
+    }
+    const statusResult = await this.read(status);
+    if (statusResult.status !== "ok") {
+      if (isAuthenticationFailure(statusResult)) {
+        throw new Error("管理密码错误，或 H168 登录会话已失效");
+      }
+      throw new Error(statusResult.transportError ?? "H168 登录失败，请检查设备连接");
+    }
   }
 
   async read(endpoint: ProbeEndpoint): Promise<EndpointProbeResult> {
@@ -173,7 +203,7 @@ export class H168EndpointClient {
             body: JSON.stringify({
               password,
               rememberSession,
-              rememberPassword: false,
+              rememberPassword: this.rememberPassword(),
             }),
           }
         : {}),

@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-仓库现在已完成设备无关的 Phase 0-7 基础：研究、核心模型、解析/认证、Probe、集中
+仓库现在已完成设备无关的 Phase 0-7 基础：研究、核心模型、解析/认证、内部 Probe、集中
 调度、网络质量、事件引擎，以及 Dashboard/PWA 壳。当前已有一批 H168-383 实机
 endpoint 证据，但仍不得把 fixture 或其他型号 mock 当作额外的 H168 支持证据。
 
@@ -24,6 +24,8 @@ npm run lint
 - `apps/web` 只消费统一结构，不直接解析 XML。
 - `apps/web/src/live` 维护 Bridge endpoint client、集中 `DevicePollingSession` 和本地
   历史；`apps/web/src/dashboard` 只负责展示，不自行请求 Huawei。
+- `apps/web/src/auth` 负责登录入口、记住密码偏好和自动登录；认证成功后立即进入
+  Dashboard 并启动实时抓取。原始密码不写入浏览器存储。
 - `fixtures/h168/` 只能提交脱敏且带来源说明的 fixture。
 - 真实响应先保存在被 `.gitignore` 忽略的 `fixtures/h168/live/`，分析完再生成脱敏
   fixture；不修改、重命名或删除原始抓包。

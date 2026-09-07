@@ -22,6 +22,16 @@ const basicEndpoint: ProbeEndpoint = {
   evidence: "h168-reference-claimed",
 };
 
+const monitoringEndpoint: ProbeEndpoint = {
+  id: "monitoring-status",
+  label: "Monitoring status",
+  path: "/api/monitoring/status",
+  intervalMs: 2_000,
+  requiresAuth: true,
+  defaultEnabled: true,
+  evidence: "h168-live-observed",
+};
+
 function response(forEndpoint = endpoint): EndpointProbeResult {
   return {
     endpoint: forEndpoint,
@@ -68,6 +78,82 @@ describe("H168EndpointClient", () => {
     expect(JSON.parse(String(requests[1]?.body)).password).toBe("secret");
     expect(requests[2]?.body).toBeUndefined();
     expect(client.gateway).toBe("192.168.8.1");
+  });
+
+  it("authenticates with the management password and forwards the remember choice", async () => {
+    const requests: RequestInit[] = [];
+    const results = [response(basicEndpoint), response(monitoringEndpoint)];
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(init ?? {});
+      return new Response(JSON.stringify({
+        schemaVersion: 1,
+        gateway: "192.168.8.1",
+        endpointResult: results.shift() ?? response(monitoringEndpoint),
+      }), { status: 200 });
+    });
+    const client = new H168EndpointClient("https://bridge.example/api/probe", {
+      getPassword: () => "secret",
+      rememberSession: () => true,
+      rememberPassword: () => true,
+      fetcher,
+    });
+
+    await client.authenticate();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[1]?.method).toBe("POST");
+    expect(JSON.parse(String(requests[1]?.body))).toEqual({
+      password: "secret",
+      rememberSession: true,
+      rememberPassword: true,
+    });
+  });
+
+  it("can authenticate through a remembered Bridge session without a browser password", async () => {
+    const requests: RequestInit[] = [];
+    const results = [response(basicEndpoint), response(monitoringEndpoint)];
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(init ?? {});
+      return new Response(JSON.stringify({
+        schemaVersion: 1,
+        gateway: "192.168.8.1",
+        endpointResult: results.shift() ?? response(monitoringEndpoint),
+      }), { status: 200 });
+    });
+    const client = new H168EndpointClient("https://bridge.example/api/probe", {
+      getPassword: () => "",
+      rememberSession: () => true,
+      rememberPassword: () => true,
+      fetcher,
+    });
+
+    await client.authenticate();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+  });
+
+  it("reports a rejected management password as an authentication error", async () => {
+    const rejected = {
+      ...response(monitoringEndpoint),
+      status: "transport-error" as const,
+      huaweiError: null,
+      transportError: "authentication_login 失败 (100003)",
+    };
+    const results = [response(basicEndpoint), rejected];
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => new Response(JSON.stringify({
+      schemaVersion: 1,
+      gateway: "192.168.8.1",
+      endpointResult: results.shift() ?? rejected,
+    }), { status: 200 }));
+    const client = new H168EndpointClient("https://bridge.example/api/probe", {
+      getPassword: () => "wrong",
+      rememberSession: () => true,
+      fetcher,
+    });
+
+    await expect(client.authenticate()).rejects.toThrow("管理密码错误");
   });
 
   it("does not store a password when remember session is disabled", async () => {

@@ -24,7 +24,7 @@ export class H168ControlClient {
         ...values,
         ...(password ? { password } : {}),
         rememberSession: this.options.rememberSession(),
-        rememberPassword: false,
+        rememberPassword: this.options.rememberPassword?.() ?? false,
       }),
     });
     const payload = await response.json() as unknown;

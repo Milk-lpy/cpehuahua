@@ -68,5 +68,6 @@ export interface ControlResponse<T = unknown> {
 export interface ControlClientOptions {
   getPassword: () => string;
   rememberSession: () => boolean;
+  rememberPassword?: () => boolean;
   fetcher?: typeof fetch;
 }

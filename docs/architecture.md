@@ -13,8 +13,8 @@
 
 ```text
 apps/web
-  Probe 页面 / 展示 view model
-          │ 只消费统一 ProbeReport / CpeSnapshot
+  Login 页面 → Dashboard / 控制页面
+          │ 只消费统一 endpoint result / CpeSnapshot
 packages/core
   types      CpeSnapshot、Cell、ProbeResult、Event
   xml        保留 raw 的 Huawei XML parser + error/key extraction
@@ -62,8 +62,9 @@ interface CpeAdapter {
 ## 认证边界
 
 认证状态机内部管理 Cookie 和 token，外部结果只提供是否存在 Session/CSRF 的诊断
-信息和脱敏 trace。密码只作为方法参数参与 PBKDF2/SHA/HMAC，禁止写日志、持久化或
-传给远端服务。
+信息和脱敏 trace。密码只作为方法参数参与 PBKDF2/SHA/HMAC，不写日志、不传给远端
+服务。浏览器只保存“记住密码并自动登录”的布尔偏好；用户显式选择后，密码才由本地
+Surge `$persistentStore` 保存，用于自动恢复 H168 会话。
 
 新流程优先：`SesTokInfo → challenge_login → 新 token → authentication_login`；
 旧 `/api/webserver/token` 只是兼容 fallback。遇到 `125003`/CSRF 失效，实时请求
