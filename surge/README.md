@@ -5,13 +5,13 @@
 推荐直接导入仓库中的 Module：
 
 ```text
-https://raw.githubusercontent.com/Milk-lpy/cpehuahua/main/surge/cpehuahua.sgmodule
+https://raw.githubusercontent.com/Milk-lpy/cpehuahua/refs/heads/main/surge/cpehuahua.sgmodule
 ```
 
 Module 内的 `script-path` 已经指向：
 
 ```text
-https://raw.githubusercontent.com/Milk-lpy/cpehuahua/main/surge/bridge.js
+https://raw.githubusercontent.com/Milk-lpy/cpehuahua/refs/heads/main/surge/bridge.js
 ```
 
 Surge 会自动下载并缓存远程脚本。默认每 86400 秒检查更新；修改 GitHub 上的脚本后，

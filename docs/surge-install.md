@@ -12,7 +12,7 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 - iPhone 已连接 H168-383 Wi-Fi。
 - Surge 已安装并能正常接管该 Wi-Fi 的 HTTP 请求。
 - 直接导入 GitHub 上的 Module：
-  `https://raw.githubusercontent.com/Milk-lpy/cpehuahua/main/surge/cpehuahua.sgmodule`。
+  `https://raw.githubusercontent.com/Milk-lpy/cpehuahua/refs/heads/main/surge/cpehuahua.sgmodule`。
   Module 会通过 `script-path` 自动下载并缓存 GitHub 上的
   `surge/bridge.js`，不需要再单独导入脚本文件。
 - 第一次启用 Module 或脚本更新时需要临时能够访问 GitHub；下载成功后 Surge 使用本地
