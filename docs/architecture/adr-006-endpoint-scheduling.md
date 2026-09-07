@@ -16,6 +16,8 @@ Signal 使用相同频率请求。
   四类专用路径。
 - 可选的 `/api/network-probe` 只接收用户显式提供的无凭据 HTTPS URL；Surge 丢弃
   目标响应体，只返回成功、时间戳和延迟样本。没有配置目标时不生成网络指标。
+- Web 侧用户路径探测与 Huawei 端点调度分离，并设置默认最小间隔为 1 秒；即使一轮
+  端点很快完成，也不会因多个快照回调重复发起网络探测。
 - endpoint id 必须来自 Bridge 内部只读 allowlist；未知 id 直接返回 404，不拼接任意
   用户输入的 H168 URL。
 - Web 由一个 `DevicePollingSession` 持有 core `PollingEngine`，按 endpoint 的

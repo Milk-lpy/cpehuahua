@@ -47,6 +47,8 @@ function report(overrides: Partial<CpeLiveReport> = {}): CpeLiveReport {
       pci: 187,
       cellId: "123456789",
       tac: null,
+      bandwidth: null,
+      rrcStatus: null,
       cqi: null,
       mimoRank: null,
       dlMcs: null,
@@ -129,6 +131,26 @@ describe("live snapshot storage", () => {
     const loaded = loadPersistedLiveReport(storage);
     expect(loaded?.history).toHaveLength(60);
     expect(loaded?.events).toHaveLength(500);
+  });
+
+  it("hydrates snapshots saved before the radio detail fields existed", () => {
+    const storage = new MemoryStorage();
+    const input = report();
+    const { bandwidth: _bandwidth, rrcStatus: _rrcStatus, ...legacyRadio } = input.snapshot.radio;
+    const legacyReport = {
+      ...input,
+      snapshot: { ...input.snapshot, radio: legacyRadio },
+    };
+    storage.setItem(liveStorageKey, JSON.stringify({
+      version: 1,
+      savedAt: input.generatedAt,
+      report: legacyReport,
+    }));
+
+    const loaded = loadPersistedLiveReport(storage);
+
+    expect(loaded?.snapshot.radio.bandwidth).toBeNull();
+    expect(loaded?.snapshot.radio.rrcStatus).toBeNull();
   });
 
   it("rejects corrupt, wrong-version, and oversized state", () => {

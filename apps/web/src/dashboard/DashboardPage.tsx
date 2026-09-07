@@ -24,6 +24,7 @@ interface DashboardPageProps {
   cached: boolean;
   liveMonitoring: boolean;
   liveError: string | null;
+  networkProbeConfigured: boolean;
   onToggleLive: () => void;
   onBackToProbe: () => void;
   onClearCache: () => void;
@@ -75,6 +76,7 @@ function CellCard({ cell, index }: { cell: CpeCell; index: number }) {
         ["RSRQ", cell.rsrqDb, "dB"],
         ["SINR", cell.sinrDb, "dB"],
         ["ARFCN", cell.arfcn],
+        ["Bandwidth", cell.bandwidth],
       ]} />
     </article>
   );
@@ -141,6 +143,7 @@ export function DashboardPage({
   cached,
   liveMonitoring,
   liveError,
+  networkProbeConfigured,
   onToggleLive,
   onBackToProbe,
   onClearCache,
@@ -301,6 +304,8 @@ export function DashboardPage({
             ["PCI", snapshot.radio.pci],
             ["Cell ID", snapshot.radio.cellId],
             ["TAC", snapshot.radio.tac],
+            ["Bandwidth", snapshot.radio.bandwidth],
+            ["RRC 状态（原始）", snapshot.radio.rrcStatus],
             ["CQI", snapshot.radio.cqi],
             ["MIMO Rank", snapshot.radio.mimoRank],
             ["MCS (DL)", snapshot.radio.dlMcs],
@@ -317,7 +322,10 @@ export function DashboardPage({
           )}
         </section>
         <section className="panel">
-          <div className="section-heading"><div><p className="eyebrow">Network Quality</p><h2>用户路径</h2></div></div>
+          <div className="section-heading">
+            <div><p className="eyebrow">Network Quality</p><h2>用户路径</h2></div>
+            <span className="section-note">{networkProbeConfigured ? "Surge · 最快 1 秒/次" : "未配置探测地址"}</span>
+          </div>
           <DefinitionList items={[
             ["Ping", snapshot.network.pingMs, "ms"],
             ["Jitter", snapshot.network.jitterMs, "ms"],

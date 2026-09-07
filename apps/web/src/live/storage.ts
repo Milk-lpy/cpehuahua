@@ -1,4 +1,4 @@
-import type { CpeLiveReport, CpeSnapshot } from "@cpehuahua/core";
+import type { CpeCell, CpeLiveReport, CpeSnapshot } from "@cpehuahua/core";
 
 const STORAGE_KEY = "cpehuahua.live.v1";
 const STORAGE_VERSION = 1;
@@ -40,12 +40,41 @@ function isSnapshot(value: unknown): value is CpeSnapshot {
     isRecord(value.connection) &&
     isRecord(value.radio) &&
     isRecord(value.cells) &&
+    (value.cells.pcc === null || isRecord(value.cells.pcc)) &&
     Array.isArray(value.cells.scells) &&
+    value.cells.scells.every(isRecord) &&
     Array.isArray(value.cells.neighbors) &&
+    value.cells.neighbors.every(isRecord) &&
     isRecord(value.network) &&
     isRecord(value.extended) &&
     isRecord(value.capabilities)
   );
+}
+
+/** Add fields introduced after the first persisted snapshot schema. */
+function normalizeCell(value: CpeCell): CpeCell {
+  return {
+    ...value,
+    bandwidth: value.bandwidth ?? null,
+    rrcStatus: value.rrcStatus ?? null,
+  };
+}
+
+function normalizeSnapshot(value: CpeSnapshot): CpeSnapshot {
+  return {
+    ...value,
+    radio: {
+      ...value.radio,
+      bandwidth: value.radio.bandwidth ?? null,
+      rrcStatus: value.radio.rrcStatus ?? null,
+    },
+    cells: {
+      ...value.cells,
+      pcc: value.cells.pcc === null ? null : normalizeCell(value.cells.pcc),
+      scells: value.cells.scells.map(normalizeCell),
+      neighbors: value.cells.neighbors.map(normalizeCell),
+    },
+  };
 }
 
 function isLiveReport(value: unknown): value is CpeLiveReport {
@@ -74,7 +103,8 @@ function parseState(raw: string | null): CpeLiveReport | null {
 
     return {
       ...state.report,
-      history: state.report.history.slice(-MAX_HISTORY),
+      snapshot: normalizeSnapshot(state.report.snapshot),
+      history: state.report.history.slice(-MAX_HISTORY).map(normalizeSnapshot),
       events: state.report.events.slice(-MAX_EVENTS),
     };
   } catch {

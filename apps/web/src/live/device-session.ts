@@ -22,6 +22,8 @@ export interface DevicePollingOptions {
   eventEngine?: EventEngine;
   networkQuality?: NetworkQualityTracker;
   networkProbe?: () => Promise<NetworkProbeSample>;
+  /** Minimum delay between user-path probes; Huawei endpoint polling stays independent. */
+  networkProbeIntervalMs?: number;
   now?: () => number;
   setTimeout?: (handler: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearTimeout?: (handle: ReturnType<typeof setTimeout>) => void;
@@ -43,6 +45,8 @@ export class DevicePollingSession {
   private readonly eventEngine: EventEngine;
   private readonly networkQuality: NetworkQualityTracker;
   private readonly networkProbe: (() => Promise<NetworkProbeSample>) | undefined;
+  private readonly networkProbeIntervalMs: number;
+  private readonly now: () => number;
   private readonly getGateway: () => string | null;
   private readonly onEndpointResult: ((result: EndpointProbeResult) => void) | undefined;
   private readonly onUpdate: ((report: CpeLiveReport) => void) | undefined;
@@ -50,6 +54,7 @@ export class DevicePollingSession {
   private readonly history: CpeSnapshot[] = [];
   private readonly engine: PollingEngine;
   private networkProbeInFlight: Promise<void> | null = null;
+  private lastNetworkProbeStartedAt: number | null = null;
   private latestNetworkUpdate: NetworkQualityUpdate | null = null;
   private networkProbeErrorReported = false;
   private sessionGeneration = 0;
@@ -61,6 +66,8 @@ export class DevicePollingSession {
     this.eventEngine = options.eventEngine ?? new EventEngine();
     this.networkQuality = options.networkQuality ?? new NetworkQualityTracker();
     this.networkProbe = options.networkProbe;
+    this.networkProbeIntervalMs = positiveInteger(options.networkProbeIntervalMs, 1_000);
+    this.now = options.now ?? (() => Date.now());
     this.getGateway = options.getGateway ?? (() => options.gateway ?? null);
     this.onEndpointResult = options.onEndpointResult;
     this.onUpdate = options.onUpdate;
@@ -71,7 +78,7 @@ export class DevicePollingSession {
       gateway: options.gateway ?? null,
       source: "live",
       read,
-      ...(options.now !== undefined ? { now: options.now } : {}),
+      now: this.now,
       ...(options.setTimeout !== undefined ? { setTimeout: options.setTimeout } : {}),
       ...(options.clearTimeout !== undefined ? { clearTimeout: options.clearTimeout } : {}),
       onEndpointResult: (result) => {
@@ -107,6 +114,7 @@ export class DevicePollingSession {
     this.eventEngine.reset();
     this.networkQuality.reset();
     this.networkProbeInFlight = null;
+    this.lastNetworkProbeStartedAt = null;
     this.latestNetworkUpdate = null;
     this.networkProbeErrorReported = false;
     this.latest = null;
@@ -153,6 +161,14 @@ export class DevicePollingSession {
 
   private startNetworkProbe(): void {
     if (!this.networkProbe || this.networkProbeInFlight !== null) return;
+    const startedAt = this.now();
+    if (
+      this.lastNetworkProbeStartedAt !== null
+      && startedAt - this.lastNetworkProbeStartedAt < this.networkProbeIntervalMs
+    ) {
+      return;
+    }
+    this.lastNetworkProbeStartedAt = startedAt;
     const generation = this.sessionGeneration;
     const operation = Promise.resolve().then(() => this.networkProbe!()).then((sample) => {
       if (generation !== this.sessionGeneration) return;

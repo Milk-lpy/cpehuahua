@@ -62,6 +62,8 @@ const adapter: CpeAdapter = {
       tac: null,
       band: null,
       arfcn: null,
+      bandwidth: null,
+      rrcStatus: null,
       cqi: null,
       mimoRank: null,
       dlMcs: null,

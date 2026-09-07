@@ -15,6 +15,7 @@ import { sanitizedProbeReport, toProbeRows } from "./probe/view-model";
 import { liveReportFromProbe } from "./live/probe-live";
 
 const DEFAULT_BRIDGE_URL = "https://cpe-bridge.example.com/api/probe";
+const NETWORK_PROBE_INTERVAL_MS = 1_000;
 
 interface BridgeErrorPayload {
   error?: string;
@@ -179,7 +180,10 @@ function App() {
       endpoints: LIVE_ENDPOINTS,
       getGateway: () => client.gateway,
       ...(configuredProbeUrl
-        ? { networkProbe: () => networkClient.probe(configuredProbeUrl) }
+        ? {
+            networkProbe: () => networkClient.probe(configuredProbeUrl),
+            networkProbeIntervalMs: NETWORK_PROBE_INTERVAL_MS,
+          }
         : {}),
       onUpdate: (update) => {
         setLiveReport(update);
@@ -302,6 +306,7 @@ function App() {
         cached={restoredFromStorage}
         liveMonitoring={liveMonitoring}
         liveError={liveError}
+        networkProbeConfigured={networkProbeUrl.trim().length > 0}
         onToggleLive={toggleLiveMonitoring}
         onBackToProbe={() => setView("probe")}
         onClearCache={clearCachedLiveReport}

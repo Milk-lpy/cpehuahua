@@ -128,6 +128,7 @@ describe("H168 adapter", () => {
           "device-signal",
           "<response><mode>12</mode><pci>107</pci><cell_id>[REDACTED-CELL-ID]</cell_id>"
             + "<tac>[REDACTED-TAC]</tac><bandInfo>N78</bandInfo><nrearfcn>627264</nrearfcn>"
+            + "<nrdlbandwidth>100MHz</nrdlbandwidth><rrc_status>1</rrc_status>"
             + "<nrrsrp>-70dBm</nrrsrp><nrrsrq>-11.0dB</nrrsrq><nrsinr>5dB</nrsinr>"
             + "<nrrssi>-47dBm</nrrssi><nrcqi0>15</nrcqi0><nrrank>4</nrrank>"
             + "<nrbler>0</nrbler><nrulmcs>NRmcsUpCarrier1:23@256QAM</nrulmcs>"
@@ -175,6 +176,12 @@ describe("H168 adapter", () => {
     expect(snapshot.network.uploadBps).toBe(4281 * 8);
     expect(snapshot.radio.dlMcs).toBeNull();
     expect(snapshot.radio.txPowerDbm).toBeNull();
+    expect(snapshot.radio.bandwidth).toBe("100MHz");
+    expect(snapshot.radio.rrcStatus).toBe("1");
+    expect(snapshot.cells.pcc?.bandwidth).toBe("100MHz");
+    expect(snapshot.cells.pcc?.rrcStatus).toBe("1");
+    expect(snapshot.cells.scells[0]?.bandwidth).toBe("100MHz");
+    expect(snapshot.cells.scells[0]?.rrcStatus).toBeNull();
     expect(snapshot.radio.rawEvidence?.dlMcs).toBe("NRmcsDownCarrier1Code0:0@QPSK");
     expect(snapshot.radio.rawEvidence?.ulMcs).toBe("NRmcsUpCarrier1:23@256QAM");
     expect(snapshot.radio.rawEvidence?.txPower).toBe("PPusch:-20dBm");

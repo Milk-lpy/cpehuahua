@@ -65,6 +65,10 @@ export interface RadioMetrics {
   tac: Nullable<string>;
   band: Nullable<string>;
   arfcn: Nullable<number>;
+  /** H168 bandwidth text, e.g. the observed `100MHz` value. */
+  bandwidth: Nullable<string>;
+  /** Huawei `rrc_status` value; semantics remain firmware-specific. */
+  rrcStatus: Nullable<string>;
   cqi: Nullable<number>;
   mimoRank: Nullable<number>;
   dlMcs: Nullable<number>;

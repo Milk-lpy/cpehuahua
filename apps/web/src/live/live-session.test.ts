@@ -25,6 +25,8 @@ function snapshot(second: number, internetOnline: boolean): CpeSnapshot {
       tac: null,
       band: "n78",
       arfcn: null,
+      bandwidth: null,
+      rrcStatus: null,
       cqi: null,
       mimoRank: null,
       dlMcs: null,

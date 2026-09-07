@@ -23,8 +23,8 @@ function snapshot(timestamp: string): CpeSnapshot {
     connection: { cellularOnline: true, internetOnline: null, radioMode: "unknown", saNsa: "unknown", plmn: null },
     radio: {
       rsrpDbm: null, rsrqDb: null, sinrDb: null, rssiDbm: null, pci: null, cellId: null,
-      tac: null, band: null, arfcn: null, cqi: null, mimoRank: null, dlMcs: null,
-      ulMcs: null, blerPct: null, txPowerDbm: null,
+      tac: null, band: null, arfcn: null, bandwidth: null, rrcStatus: null,
+      cqi: null, mimoRank: null, dlMcs: null, ulMcs: null, blerPct: null, txPowerDbm: null,
     },
     cells: { pcc: null, scells: [], neighbors: [] },
     network: { pingMs: null, jitterMs: null, packetLossPct: null, downloadBps: null, uploadBps: null },
@@ -155,5 +155,46 @@ describe("DevicePollingSession", () => {
     expect(updates.at(-1)?.network.pingMs).toBe(31);
     expect(updates.at(-1)?.connection.internetOnline).toBeNull();
     expect(withUpdates.latestReport?.history).toHaveLength(1);
+  });
+
+  it("throttles user-path probes independently from radio polling", async () => {
+    let clock = 0;
+    let probes = 0;
+    const fastEndpoint = { ...endpoints[0]!, intervalMs: 1 };
+    const adapter: CpeAdapter = {
+      id: "h168",
+      modelNames: ["fixture"],
+      probeEndpoints: [fastEndpoint],
+      baselineCapabilities: {} as CpeAdapter["baselineCapabilities"],
+      identify: () => ({ matched: true, confidence: "possible", reason: "test" }),
+      normalize: (input) => snapshot(new Date(input.timestamp).toISOString()),
+    };
+    const session = new DevicePollingSession(
+      async (endpoint) => result(endpoint),
+      {
+        adapter,
+        endpoints: [fastEndpoint],
+        now: () => clock,
+        networkProbeIntervalMs: 1_000,
+        networkProbe: async () => {
+          probes += 1;
+          return { timestamp: new Date(clock).toISOString(), success: true, latencyMs: 31 };
+        },
+      },
+    );
+
+    await session.pollNow();
+    await Promise.resolve();
+    await Promise.resolve();
+    clock = 1;
+    await session.pollNow();
+    await Promise.resolve();
+    await Promise.resolve();
+    clock = 1_000;
+    await session.pollNow();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(probes).toBe(2);
   });
 });

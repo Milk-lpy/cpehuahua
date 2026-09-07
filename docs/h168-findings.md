@@ -93,6 +93,10 @@ supported 结论。加密 fallback 已加入代码并通过离线测试向量；
   `nrdlmcs`、`nrtxpower`、`rrc_status` 和 `ims`。其中 MCS 与 TX power 是包含
   carrier/channel 描述的复合字符串，当前不能安全压成单个数值；原始字段保留，
   标准化数值仍保持 `null`。
+- 其中 `nrdlbandwidth` 在本次样本中为 `100MHz`，标准化为 `radio.bandwidth` 及
+  PCC 的 `bandwidth` 文本；这不推断上行带宽，也不把文本转换成数值。`rrc_status`
+  标准化为 `radio.rrcStatus` 和 PCC 的原始字符串；数值 `1` 的固件语义尚未确认，
+  因此 UI 只标记为“原始状态”，不解码成已连接/空闲等结论。
 - `/api/device/seccellinfo` 返回一个 `nrseccell_list` 记录，`lteseccell_list`
   为空；本次确认其 H168 形状为 `ARFCN,Band,BW,PCI,RSRP,RSRQ,RSSI,SINR`。
 - `/api/device/nbrcellinfo` 返回六个 NR 邻区记录，`nbrcell_ltelist` 为空；本次
@@ -218,8 +222,12 @@ rsrp rsrq sinr rssi pci cellId tac band arfcn cqi mimoRank bler
 保留；Dashboard 只将其标为设备原始字段，不将其当作单一数值。
 
 ```text
-nrulmcs nrdlmcs nrtxpower
+nrulbandwidth nrdlbandwidth rrc_status nrulmcs nrdlmcs nrtxpower
 ```
+
+本次样本中的 `nrdlbandwidth=100MHz` 已进入 `radio.bandwidth` 和小区详情；
+`rrc_status` 已进入 `radio.rrcStatus`，但仍按原始字符串展示，未加入未经确认的
+状态码解释。
 
 `CapabilityMatrix` 只有在 `AdapterInput.source="live"` 时才会把 endpoint/字段从
 `unknown` 改为 `observed`；fixture 测试不会制造能力证据。
