@@ -14,6 +14,7 @@ import {
 import { sanitizedProbeReport, toProbeRows } from "./probe/view-model";
 import { liveReportFromProbe } from "./live/probe-live";
 import { BottomNav, type AppView } from "./ui/BottomNav";
+import { H168ControlClient } from "./control/client";
 
 const DEFAULT_BRIDGE_URL = "https://cpe-bridge.example.com/api/probe";
 const NETWORK_PROBE_INTERVAL_MS = 1_000;
@@ -163,6 +164,10 @@ function App() {
 
   const rows = useMemo(() => (report === null ? [] : toProbeRows(report)), [report]);
   const liveError = Object.values(liveErrors)[0] ?? null;
+  const controlClient = useMemo(() => new H168ControlClient(bridgeUrl, {
+    getPassword: () => livePasswordRef.current,
+    rememberSession: () => rememberSession,
+  }), [bridgeUrl, rememberSession]);
 
   useEffect(() => () => {
     liveSessionRef.current?.stop();
@@ -329,6 +334,7 @@ function App() {
         onToggleLive={toggleLiveMonitoring}
         onNavigate={setView}
         onClearCache={clearCachedLiveReport}
+        controlClient={controlClient}
       />
     );
   }

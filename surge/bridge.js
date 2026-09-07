@@ -1,12 +1,13 @@
 /* global $done, $httpClient, $network, $persistentStore, $request */
 
 /**
- * CPE Huahua local read-only probe bridge.
+ * CPE Huahua local probe and bounded control bridge.
  *
  * This is a bounded, single-file Surge runtime entrypoint. The canonical
  * protocol logic is tested in packages/core; this file mirrors the required
- * subset for Surge's callback HTTP API and WebView Web Crypto runtime. It never calls a
- * Huawei write endpoint and never logs credentials, cookies, or tokens.
+ * subset for Surge's callback HTTP API and WebView Web Crypto runtime. Huawei
+ * writes are available only through the strict action switch below. It
+ * never logs credentials, cookies, tokens, SMS bodies, or control payloads.
  */
 
 const STORE_KEY = "cpehuahua.bridge.v1";
@@ -32,6 +33,15 @@ const REAUTH_ON_NO_RIGHTS_PATHS = new Set([
   "/api/monitoring/traffic-statistics",
   "/api/device/information",
   "/api/net/cell-info",
+  "/api/sms/sms-list",
+  "/api/sms/send-sms",
+  "/api/sms/set-read",
+  "/api/sms/delete-sms",
+  "/api/net/net-mode",
+  "/api/dialup/mobile-dataswitch",
+  "/api/wlan/host-list",
+  "/api/wlan/mac-filter",
+  "/api/device/control",
 ]);
 
 const ENDPOINTS = [
@@ -53,6 +63,10 @@ const ENDPOINTS = [
   endpoint("wlan-host-list", "Connected WLAN clients", "/api/wlan/host-list", true, 10_000, "h168-live-observed"),
   endpoint("monitoring-check-notifications", "Notifications / unread SMS count", "/api/monitoring/check-notifications", true, 10_000, "h168-live-observed"),
   endpoint("sms-count", "SMS mailbox counts", "/api/sms/sms-count", true, 10_000, "h168-live-observed"),
+  endpoint("net-net-mode", "Network mode and LTE band mask", "/api/net/net-mode", true, null, "reference-shape"),
+  endpoint("net-net-mode-list", "Supported network modes and LTE bands", "/api/net/net-mode-list", true, null, "reference-shape"),
+  endpoint("dialup-mobile-dataswitch", "Mobile data switch", "/api/dialup/mobile-dataswitch", true, null, "reference-shape"),
+  endpoint("wlan-multi-macfilter-settings-ex", "WLAN client filter settings", "/api/wlan/multi-macfilter-settings-ex", true, null, "reference-shape"),
 ];
 
 const SENSITIVE_KEYS = new Set([
@@ -834,6 +848,33 @@ async function authenticatedGet(context, path) {
   return response;
 }
 
+async function authenticatedPost(context, path, body) {
+  let reauthenticationAttempted = false;
+  try {
+    await login(context, false);
+  } catch (error) {
+    if (!context.password) throw error;
+    reauthenticationAttempted = true;
+    await login(context, true);
+  }
+  let response;
+  try {
+    response = await contextRequest(context, "POST", path, authHeaders(context, context.csrfToken), body);
+  } catch (error) {
+    if (!context.password || reauthenticationAttempted) throw error;
+    reauthenticationAttempted = true;
+    await login(context, true);
+    response = await contextRequest(context, "POST", path, authHeaders(context, context.csrfToken), body);
+  }
+  let parsed = parseXml(response.body);
+  if (isSessionInvalid(response, parsed, path, context.passwordProvided) && !reauthenticationAttempted) {
+    await login(context, true);
+    response = await contextRequest(context, "POST", path, authHeaders(context, context.csrfToken), body);
+    parsed = parseXml(response.body);
+  }
+  return response;
+}
+
 async function publicGet(context, path) {
   return contextRequest(context, "GET", path);
 }
@@ -1372,6 +1413,162 @@ async function runNetworkProbe() {
   });
 }
 
+function xmlBlocks(rawXml, name) {
+  const escaped = String(name).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  const pattern = new RegExp("<\\s*" + escaped + "(?:\\s[^>]*)?>([\\s\\S]*?)<\\s*/\\s*" + escaped + "\\s*>", "gi");
+  return Array.from(String(rawXml).matchAll(pattern), (match) => match[1] || "");
+}
+
+function responseStatus(response) {
+  const parsed = parseXml(response.body);
+  return {
+    status: parsed.error ? "huawei-error" : isSuccessful(response) ? "ok" : "http-error",
+    httpStatus: response.status,
+    huaweiError: parsed.error,
+  };
+}
+
+function smsMessages(rawXml) {
+  return xmlBlocks(rawXml, "Message").map((block) => ({
+    index: xmlText(block, ["Index"]),
+    unread: xmlText(block, ["Smstat"]) === "0",
+    phone: xmlText(block, ["Phone"]),
+    content: xmlText(block, ["Content"]),
+    date: xmlText(block, ["Date"]),
+    smsType: xmlText(block, ["SmsType"]),
+  })).filter((message) => message.index !== null);
+}
+
+function wlanHosts(rawXml) {
+  return xmlBlocks(rawXml, "Host").map((block) => ({
+    id: xmlText(block, ["ID"]),
+    name: xmlText(block, ["ActualName", "HostName"]),
+    hostName: xmlText(block, ["HostName"]),
+    manufacturer: xmlText(block, ["IdentifyBrands", "ActualManu"]),
+    deviceType: xmlText(block, ["IdentifyType", "ActualType"]),
+    frequency: xmlText(block, ["Frequency"]),
+    ssid: xmlText(block, ["AssociatedSsid"]),
+    associatedSeconds: xmlNumber(block, ["AssociatedTime"]),
+    ipAddress: xmlText(block, ["IpAddress"]),
+    macAddress: xmlText(block, ["MacAddress"]),
+  })).filter((host) => host.macAddress !== null);
+}
+
+function requireString(payload, key, pattern, label) {
+  const value = typeof payload[key] === "string" ? payload[key].trim() : "";
+  if (!value || (pattern && !pattern.test(value))) throw new Error(label + "格式无效");
+  return value;
+}
+
+function requestXml(fields) {
+  return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><request>"
+    + Object.entries(fields).map(([key, value]) => "<" + key + ">" + escapeXml(value) + "</" + key + ">").join("")
+    + "</request>";
+}
+
+async function verifyControlTarget(context) {
+  const response = await publicGet(context, "/api/device/basic_information");
+  if (!isSuccessful(response) || !looksLikeH168(response.body)) {
+    throw new Error("默认网关未确认是 H168-383，已拒绝控制操作");
+  }
+}
+
+async function executeControl(context, action, payload) {
+  if (action === "sms.list") {
+    const box = [1, 2].includes(Number(payload.box)) ? Number(payload.box) : 1;
+    const page = Math.max(1, Math.min(50, Number(payload.page) || 1));
+    const count = Math.max(1, Math.min(50, Number(payload.count) || 20));
+    const body = requestXml({ PageIndex: page, ReadCount: count, BoxType: box, SortType: 0, Ascending: 0, UnreadPreferred: 0 });
+    const response = await authenticatedPost(context, "/api/sms/sms-list", body);
+    return { ...responseStatus(response), data: { box, page, count: xmlNumber(response.body, ["Count"]) ?? 0, messages: smsMessages(response.body) } };
+  }
+  if (action === "sms.send") {
+    const phone = requireString(payload, "phone", /^\+?[0-9]{3,20}$/, "手机号");
+    const content = requireString(payload, "content", null, "短信内容");
+    if (Array.from(content).length > 500) throw new Error("短信内容不能超过 500 个字符");
+    const body = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><request><Index>-1</Index><Phones><Phone>"
+      + escapeXml(phone) + "</Phone></Phones><Sca></Sca><Content>" + escapeXml(content)
+      + "</Content><Length>" + Array.from(content).length + "</Length><Reserved>1</Reserved><Date>-1</Date></request>";
+    const response = await authenticatedPost(context, "/api/sms/send-sms", body);
+    return { ...responseStatus(response), data: null };
+  }
+  if (action === "sms.read" || action === "sms.delete") {
+    const index = requireString(payload, "index", /^\d+$/, "短信编号");
+    const response = await authenticatedPost(context, action === "sms.read" ? "/api/sms/set-read" : "/api/sms/delete-sms", requestXml({ Index: index }));
+    return { ...responseStatus(response), data: null };
+  }
+  if (action === "network.get") {
+    // Huawei rotates request tokens on some firmware. Keep protected device
+    // requests sequential when they share one session context.
+    const mode = await authenticatedGet(context, "/api/net/net-mode");
+    const dataSwitch = await authenticatedGet(context, "/api/dialup/mobile-dataswitch");
+    const modeState = responseStatus(mode);
+    const switchState = responseStatus(dataSwitch);
+    if (modeState.status !== "ok") return { ...modeState, data: null };
+    return { status: switchState.status === "ok" ? "ok" : "partial", httpStatus: mode.status, huaweiError: null, data: {
+      networkMode: xmlText(mode.body, ["NetworkMode"]),
+      networkBand: xmlText(mode.body, ["NetworkBand"]),
+      lteBand: xmlText(mode.body, ["LTEBand"]),
+      nrBand: xmlText(mode.body, ["NRBand"]),
+      mobileData: switchState.status === "ok" ? xmlText(dataSwitch.body, ["dataswitch"]) === "1" : null,
+    } };
+  }
+  if (action === "network.set") {
+    const networkMode = requireString(payload, "networkMode", /^[0-9A-Fa-f]{2}$/, "网络模式");
+    const networkBand = requireString(payload, "networkBand", /^[0-9A-Fa-f]{1,32}$/, "NetworkBand");
+    const lteBand = requireString(payload, "lteBand", /^[0-9A-Fa-f]{1,32}$/, "LTEBand");
+    const nrBand = typeof payload.nrBand === "string" && /^[0-9A-Fa-f]{1,32}$/.test(payload.nrBand) ? payload.nrBand : null;
+    const fields = { NetworkMode: networkMode, NetworkBand: networkBand, LTEBand: lteBand, ...(nrBand ? { NRBand: nrBand } : {}) };
+    const response = await authenticatedPost(context, "/api/net/net-mode", requestXml(fields));
+    return { ...responseStatus(response), data: null };
+  }
+  if (action === "network.mobile-data") {
+    if (typeof payload.enabled !== "boolean") throw new Error("移动数据开关参数无效");
+    const response = await authenticatedPost(context, "/api/dialup/mobile-dataswitch", requestXml({ dataswitch: payload.enabled ? 1 : 0 }));
+    return { ...responseStatus(response), data: null };
+  }
+  if (action === "clients.list") {
+    const response = await authenticatedGet(context, "/api/wlan/host-list");
+    return { ...responseStatus(response), data: { clients: responseStatus(response).status === "ok" ? wlanHosts(response.body) : [] } };
+  }
+  if (action === "clients.block") {
+    const macAddress = requireString(payload, "macAddress", /^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/, "MAC 地址");
+    const hostName = typeof payload.hostName === "string" ? payload.hostName.slice(0, 64) : "CPE Huahua blocked client";
+    const body = requestXml({ wifihostname: hostName, WifiMacFilterMac: macAddress });
+    const response = await authenticatedPost(context, "/api/wlan/mac-filter", body);
+    return { ...responseStatus(response), data: null };
+  }
+  if (action === "device.reboot") {
+    const response = await authenticatedPost(context, "/api/device/control", requestXml({ Control: 1 }));
+    return { ...responseStatus(response), data: null };
+  }
+  throw new Error("未知或尚未开放的控制操作");
+}
+
+async function runControl() {
+  if (String($request.method).toUpperCase() !== "POST") {
+    bridgeResponse(405, { error: "Control route requires POST" });
+    return;
+  }
+  const gateway = gatewayAddress();
+  if (!gateway) {
+    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接 H168 Wi-Fi。" });
+    return;
+  }
+  const payload = requestPayload();
+  const action = typeof payload.action === "string" ? payload.action : "";
+  if (!action) {
+    bridgeResponse(400, { error: "缺少控制操作" });
+    return;
+  }
+  const context = contextFromRequest();
+  context.baseUrl = "http://" + gateway;
+  await verifyControlTarget(context);
+  const result = await executeControl(context, action, payload);
+  if (context.rememberSession || context.rememberPassword) saveStoredState(context);
+  bridgeResponse(200, { schemaVersion: 1, gateway, action, ...result });
+}
+
 function endpointIdFromRequest() {
   const match = String($request.url).match(/\/api\/endpoint\/([a-z0-9-]+)$/i);
   return match?.[1] ?? null;
@@ -1508,8 +1705,9 @@ const endpointId = endpointIdFromRequest();
 const isProbeRoute = $request.url.endsWith("/api/probe") || $request.url.endsWith("/api/live");
 const isEndpointRoute = endpointId !== null;
 const isNetworkProbeRoute = $request.url.endsWith("/api/network-probe");
+const isControlRoute = $request.url.endsWith("/api/control");
 
-if ((isProbeRoute || isEndpointRoute || isNetworkProbeRoute)
+if ((isProbeRoute || isEndpointRoute || isNetworkProbeRoute || isControlRoute)
   && String($request.method).toUpperCase() === "OPTIONS") {
   bridgeResponse(204, {});
 } else if (isEndpointRoute) {
@@ -1519,6 +1717,10 @@ if ((isProbeRoute || isEndpointRoute || isNetworkProbeRoute)
 } else if (isNetworkProbeRoute) {
   runNetworkProbe().catch((error) => {
     bridgeResponse(500, { error: error instanceof Error ? error.message : "Network probe failed" });
+  });
+} else if (isControlRoute) {
+  runControl().catch((error) => {
+    bridgeResponse(500, { error: error instanceof Error ? error.message : "Bridge control failed" });
   });
 } else if (isProbeRoute) {
   runProbe().catch((error) => {

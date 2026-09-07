@@ -168,6 +168,42 @@ export const H168_PROBE_ENDPOINTS: readonly ProbeEndpoint[] = [
     defaultEnabled: true,
     evidence: "h168-live-observed",
   },
+  {
+    id: "net-net-mode",
+    label: "Network mode and LTE band mask",
+    path: "/api/net/net-mode",
+    intervalMs: null,
+    requiresAuth: true,
+    defaultEnabled: true,
+    evidence: "reference-shape",
+  },
+  {
+    id: "net-net-mode-list",
+    label: "Supported network modes and LTE bands",
+    path: "/api/net/net-mode-list",
+    intervalMs: null,
+    requiresAuth: true,
+    defaultEnabled: true,
+    evidence: "reference-shape",
+  },
+  {
+    id: "dialup-mobile-dataswitch",
+    label: "Mobile data switch",
+    path: "/api/dialup/mobile-dataswitch",
+    intervalMs: null,
+    requiresAuth: true,
+    defaultEnabled: true,
+    evidence: "reference-shape",
+  },
+  {
+    id: "wlan-multi-macfilter-settings-ex",
+    label: "WLAN client filter settings",
+    path: "/api/wlan/multi-macfilter-settings-ex",
+    intervalMs: null,
+    requiresAuth: true,
+    defaultEnabled: true,
+    evidence: "reference-shape",
+  },
 ];
 
 export const H168_CORE_ENDPOINT_IDS = [

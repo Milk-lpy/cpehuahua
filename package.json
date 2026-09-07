@@ -2,7 +2,7 @@
   "name": "cpehuahua",
   "version": "0.1.0",
   "private": true,
-  "description": "Read-only iPhone monitor for Huawei/Brovi H168-383 5G CPE",
+  "description": "Local-first iPhone monitor and bounded controller for Huawei/Brovi H168-383 5G CPE",
   "type": "module",
   "packageManager": "npm@11.19.0",
   "workspaces": [

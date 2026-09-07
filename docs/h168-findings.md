@@ -222,7 +222,24 @@ Probe/实时轮询在读取状态前完成登录；会话过期仍只进行一�
 | `/api/monitoring/month_statistics` | `live-observed` H168-383 实机 HTTP 200 | 已标准化月/日流量、使用时长和清零日期；60 秒只读轮询 |
 | `/api/wlan/host-list` | `live-observed` H168-383 实机 HTTP 200 | 已标准化在线终端名称/类型/频段/SSID/时长；IP/MAC 脱敏后为 null |
 | `/api/monitoring/check-notifications` | `live-observed` H168-383 实机 HTTP 200 | 已标准化未读和存储已满状态；10 秒只读轮询 |
-| `/api/sms/sms-count` | `live-observed` H168-383 实机 HTTP 200 | 已标准化邮箱计数/容量；不实现短信列表 POST、发送、删除或设为已读 |
+| `/api/sms/sms-count` | `live-observed` H168-383 实机 HTTP 200 | 已标准化邮箱计数/容量；短信内容操作进入待实机回读的有界控制层 |
+
+## 有界控制阶段（待实机回读）
+
+2026-09-07 起新增严格白名单 `/api/control`。协议形状参考持续维护的 HiLink 实现，
+但以下写入尚未收到这台 H168-383 的成功响应和读回证据，因此 UI 会原样显示 Huawei
+错误，不把“请求已发出”冒充成“设置已生效”：
+
+| 功能 | Endpoint | 当前证据 |
+| --- | --- | --- |
+| 短信列表/发送/已读/删除 | `/api/sms/sms-list`、`send-sms`、`set-read`、`delete-sms` | HiLink 参考形状；H168 仅 `sms-count` 已实测 |
+| 移动数据 | `/api/dialup/mobile-dataswitch` | HiLink 参考形状，新增 GET Probe |
+| 网络模式和 Band | `/api/net/net-mode` | LTE/NR `LTEBand`/`NRBand` 参考形状，新增 GET Probe；写入后必须重新读取 |
+| 终端断网 | `/api/wlan/mac-filter` | 通用 Huawei 兼容路径；当前 H168 未验证且尚无可靠撤销路径 |
+| 设备重启 | `/api/device/control` + `Control=1` | 多个 HiLink 实现一致，当前 H168 未验证 |
+
+没有开放任意 endpoint/XML 透传，也没有开放恢复出厂、升级、关机、AT/开发者模式。
+终端限速和重命名、锁 PCI/锁小区、完整 WLAN/APN 控制需要新的 H168 实机读取证据。
 
 ## 字段状态
 

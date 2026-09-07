@@ -1,6 +1,6 @@
 # 参考项目研究记录
 
-更新时间：2026-09-05
+更新时间：2026-09-07
 
 本记录只收集协议、端点、字段和行为依据，不把参考仓库的代码直接复制进
 cpehuahua。仓库快照以研究时 checkout 的 commit 为准；GitHub 页面和上游项目会
@@ -15,6 +15,7 @@ cpehuahua。仓库快照以研究时 checkout 的 commit 为准；GitHub 页面�
 | [MarvenAPPS/5g-cpe-signal-monitor](https://github.com/MarvenAPPS/5g-cpe-signal-monitor)（原链接会重定向） | `036757e0bdbafd52c5646f377520b2fe4c09d184` | GPL-3.0 | 只参考 PCC/SCell/邻区的展示组织和可选字段处理；不复制 GPL 前端或 Python 实现 |
 | [Salamek/huawei-lte-api](https://github.com/Salamek/huawei-lte-api) | `f416c63d2a01d7e1d743a2d039ae2d1ff6b71df5` | LGPL-3.0 | 通用 HiLink API、旧版 Session/CSRF、错误码和 XML 体系 |
 | [Salamek/huawei-lte-api-ts](https://github.com/Salamek/huawei-lte-api-ts) | `24c2f9b1eaaaf07644db644acda8eee54f0e5b08` | LGPL-3.0（`package.json` 与 `LICENSE`） | 仅参考 TypeScript API 分组和旧版浏览器实现；它没有 H168 新登录验证 |
+| [kenshaw/hilink](https://github.com/kenshaw/hilink) | 2026-09-07 shallow checkout | MIT | 交叉核对短信字段顺序、设备重启、网络模式等通用 HiLink 形状；没有作为依赖或复制实现 |
 
 ## H168 相关端点证据
 
@@ -112,6 +113,20 @@ H168 实机证据；H168 Adapter 只在实际 response key 出现时读取，仍
 
 Phase 2 的状态机按第 2-4 点实现测试基础，未声称已在 H168-383 上成功；真实设备
 仍需用 Probe 验证 token rotation、Cookie 作用域和登录返回形状。
+
+## 控制协议研究结论
+
+- `Salamek/huawei-lte-api` 与 `kenshaw/hilink` 对短信列表字段顺序，以及发送、已读、
+  删除、`device/control` 重启和 `net/net-mode` 三个基础字段的形状一致。
+- `huawei-lte-api` 的 README 列出 H165/H122/H112 等 5G 设备，但没有 H168-383，
+  因此这些写入只能作为兼容候选，不能直接标为 H168 已验证。
+- `cpemanager` 记录 Huawei `/api/net/lock-freq`，并展示 H168 相邻型号使用的锁 Band
+  流程；`Huawei-router-Hack` 还记录部分 5G 固件在 `/api/net/net-mode` 中接受
+  `NRBand`。本项目先读取当前响应，只有设备实际返回 `NRBand` 才显示 5G 选择器。
+- `wlan/mac-filter` 与多 SSID MAC filter 在通用库中存在，但终端重命名、限速和可靠
+  撤销没有得到本机 H168 协议证据；当前只开放带明确警告和二次确认的兼容性断网操作。
+- 所有写入只通过 Bridge 内置 action 映射，不接受前端传入 endpoint 或 XML。恢复出厂、
+  固件升级、关机、AT/开发者模式不在白名单中。
 
 ## Surge 约束与依据
 

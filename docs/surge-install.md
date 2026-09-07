@@ -1,11 +1,12 @@
 # Surge Module 安装与 H168 实机 Probe
 
-当前 `surge/bridge.js` 是实验性的只读 Bridge：它会发现 IPv4 默认网关、先读取
+当前 `surge/bridge.js` 是本地有界 Bridge：它会发现 IPv4 默认网关、先读取
 `basic_information` 确认 H168-383，再读取公开和认证 endpoint。`/api/probe` 返回
 脱敏 `ProbeReport`，`/api/endpoint/<id>` 返回一个脱敏 endpoint 结果，`/api/network-probe`
 返回一次 Surge 用户路径样本，`/api/live` 返回单次脱敏 `CpeLiveReport`。真实固件、
 Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新由 PWA 的
-`DevicePollingSession`/`PollingEngine` 负责。
+`DevicePollingSession`/`PollingEngine` 负责。`/api/control` 只接受代码内固定白名单，
+每次控制前重新确认默认网关仍是 H168-383；网页不能传入任意设备路径或 XML。
 
 ## 安装前提
 
@@ -73,7 +74,8 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 
 Bridge 的持久化状态使用 Surge 的 `$persistentStore`：`Remember Session` 保存
 本地 Session/Cookie/CSRF 状态，`Remember Password` 才保存密码；二者独立。V1 不
-使用 TCP 20249、Telnet、AT，也不会调用锁频、锁小区、APN、Wi-Fi 或重启接口。
+使用 TCP 20249、Telnet 或 AT。短信正文/号码和控制页终端 IP/MAC 只在当前页面内存中
+展示，不写入浏览器快照；重启、断网、删除短信和锁频均要求二次确认。
 
 实时 1/2/3/10 秒集中轮询、最近 60 个快照和事件时间线的设备无关骨架已经存在，但
 Internet 侧连续探测目标尚未确定，所以 InternetOnline、Ping、Loss、Jitter 仍可能为
