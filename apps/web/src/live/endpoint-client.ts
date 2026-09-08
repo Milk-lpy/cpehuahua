@@ -125,7 +125,7 @@ export class H168EndpointClient {
     if (basicResult.status !== "ok") {
       throw new Error(basicResult.transportError ?? "无法确认 H168 设备");
     }
-    const statusResult = await this.read(status);
+    const statusResult = await this.read(status, true);
     if (statusResult.status !== "ok") {
       if (isAuthenticationFailure(statusResult)) {
         throw new Error("管理密码错误，或 H168 登录会话已失效");
@@ -134,7 +134,7 @@ export class H168EndpointClient {
     }
   }
 
-  async read(endpoint: ProbeEndpoint): Promise<EndpointProbeResult> {
+  async read(endpoint: ProbeEndpoint, forceLogin = false): Promise<EndpointProbeResult> {
     if (endpoint.id !== "device-basic-information" && !this.deviceConfirmed) {
       throw new Error("必须先通过 basic_information 确认 H168-383");
     }
@@ -145,7 +145,7 @@ export class H168EndpointClient {
       && password.length > 0
       && !retryBlocked
       && (!rememberSession || !this.sessionPrimed);
-    let result = await this.request(endpoint, shouldSendPassword ? password : "", rememberSession);
+    let result = await this.request(endpoint, shouldSendPassword ? password : "", rememberSession, forceLogin);
 
     // A remembered Huawei session may expire between endpoint polls. Retry the
     // failed read once with the in-memory password, never recursively. The
@@ -159,7 +159,7 @@ export class H168EndpointClient {
       && !shouldSendPassword
       && !retryBlocked
     ) {
-      result = await this.request(endpoint, password, rememberSession);
+      result = await this.request(endpoint, password, rememberSession, false);
       if (isSessionFailure(result, endpoint)) {
         this.blockedSessionRetries.add(endpoint.id);
       }
@@ -190,6 +190,7 @@ export class H168EndpointClient {
     endpoint: ProbeEndpoint,
     password: string,
     rememberSession: boolean,
+    forceLogin: boolean,
   ): Promise<EndpointProbeResult> {
     const hasPassword = password.length > 0;
     const response = await this.fetcher(endpointPath(this.bridgeUrl, endpoint.id), {
@@ -204,6 +205,7 @@ export class H168EndpointClient {
               password,
               rememberSession,
               rememberPassword: this.rememberPassword(),
+              ...(forceLogin ? { forceLogin: true } : {}),
             }),
           }
         : {}),

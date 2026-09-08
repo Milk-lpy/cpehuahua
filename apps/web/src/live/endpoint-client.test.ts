@@ -76,6 +76,7 @@ describe("H168EndpointClient", () => {
     expect(requests[1]?.method).toBe("POST");
     expect(requests[2]?.method).toBe("GET");
     expect(JSON.parse(String(requests[1]?.body)).password).toBe("secret");
+    expect(JSON.parse(String(requests[1]?.body)).forceLogin).toBeUndefined();
     expect(requests[2]?.body).toBeUndefined();
     expect(client.gateway).toBe("192.168.8.1");
   });
@@ -107,6 +108,7 @@ describe("H168EndpointClient", () => {
       password: "secret",
       rememberSession: true,
       rememberPassword: true,
+      forceLogin: true,
     });
   });
 

@@ -340,10 +340,11 @@ function parseStoredState() {
 }
 
 function saveStoredState(context) {
+  // A failed login must not erase a previously valid remembered session or
+  // password. Successful requests, including an explicit "forget" choice,
+  // still write the requested state below.
+  if (!context.authenticated) return;
   const state = {};
-  // Only persist credentials/session material after Huawei has actually
-  // authenticated this request. In particular, a failed password attempt
-  // must never replace a previously valid remembered password.
   if (context.authenticated && context.rememberSession && Object.keys(context.cookies).length > 0) {
     state.cookies = context.cookies;
     state.csrfToken = context.csrfToken;
@@ -699,13 +700,16 @@ function contextFromRequest() {
   const rememberPassword = typeof payload.rememberPassword === "boolean"
     ? payload.rememberPassword
     : stored.rememberPassword === true;
-  const explicitPassword = payloadPassword.length > 0;
-  // A request carrying a password is an explicit login attempt. Do not let a
-  // previously remembered Cookie make an incorrect password look valid.
-  const cookies = rememberSession && !explicitPassword && stored.cookies && typeof stored.cookies === "object"
+  const forceLogin = payload.forceLogin === true;
+  // Control requests may carry the in-memory password so the Bridge can
+  // recover a session after expiry. That password is not, by itself, a new
+  // login request: reusing the persisted SessionID avoids re-running the
+  // H168 challenge flow for every SMS/network operation. The login screen
+  // sets forceLogin explicitly when it must validate a newly entered password.
+  const cookies = rememberSession && !forceLogin && stored.cookies && typeof stored.cookies === "object"
     ? { ...stored.cookies }
     : {};
-  const csrfToken = rememberSession && !explicitPassword && typeof stored.csrfToken === "string"
+  const csrfToken = rememberSession && !forceLogin && typeof stored.csrfToken === "string"
     ? stored.csrfToken
     : null;
   return {
@@ -713,16 +717,17 @@ function contextFromRequest() {
     cookies,
     csrfToken,
     password: payloadPassword || (rememberPassword ? storedPassword : ""),
-    passwordProvided: explicitPassword,
+    passwordProvided: Boolean(payloadPassword || (rememberPassword && storedPassword)),
     username: typeof payload.username === "string" && payload.username ? payload.username : "admin",
     rememberSession,
     rememberPassword,
+    forceLogin,
     // Endpoint routes are independent Surge requests. Reuse the persisted
     // session directly instead of replaying the login preflight for every
     // 1-second signal/traffic request. The endpoint itself remains the
     // authority; an explicit session error, or runtime-data 100003 response,
     // triggers at most one re-login.
-    authenticated: Boolean(!explicitPassword && csrfToken && cookieHeader(cookies)),
+    authenticated: Boolean(!forceLogin && csrfToken && cookieHeader(cookies)),
   };
 }
 
