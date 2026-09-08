@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CpeSnapshot } from "@cpehuahua/core";
-import { aggregationLabel, chartPoints, eventTone, formatDuration, formatMetric } from "./view-model";
+import { aggregationLabel, chartPoints, eventContextEntries, eventGroupLabel, eventTone, eventToneLabel, formatDuration, formatMetric } from "./view-model";
 
 function snapshot(second: number, sinrDb: number | null): CpeSnapshot {
   const cell = {
@@ -118,5 +118,32 @@ describe("dashboard view model", () => {
     expect(eventTone("INTERNET_UP")).toBe("success");
     expect(eventTone("LOW_SINR")).toBe("warning");
     expect(eventTone("BAND_CHANGED")).toBe("info");
+  });
+
+  it("exposes detailed device-log context from an existing event", () => {
+    const entries = eventContextEntries({
+      timestamp: "2026-09-05T00:00:01.000Z",
+      type: "BAND_CHANGED",
+      oldValue: "N78",
+      newValue: "N41",
+      context: {
+        band: "N41",
+        pci: 160,
+        cellId: "cell-1",
+        radioMode: "5G",
+        saNsa: "SA",
+        plmn: "46011",
+      },
+      durationMs: null,
+    });
+    expect(entries).toEqual([
+      { label: "网络", value: "5G / SA" },
+      { label: "PLMN", value: "46011" },
+      { label: "频段", value: "N41" },
+      { label: "PCI", value: "160" },
+      { label: "Cell ID", value: "cell-1" },
+    ]);
+    expect(eventGroupLabel("BAND_CHANGED")).toBe("无线参数");
+    expect(eventToneLabel("BAND_CHANGED")).toBe("记录");
   });
 });

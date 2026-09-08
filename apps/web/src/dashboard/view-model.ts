@@ -99,8 +99,27 @@ const EVENT_LABELS: Record<CpeEvent["type"], string> = {
   LOW_SINR: "低 SINR",
 };
 
+const EVENT_GROUPS: Record<CpeEvent["type"], string> = {
+  CELL_CHANGED: "蜂窝身份",
+  PCI_CHANGED: "蜂窝身份",
+  BAND_CHANGED: "无线参数",
+  CA_CHANGED: "无线参数",
+  NR_LOST: "无线状态",
+  NR_RESTORED: "无线状态",
+  CELLULAR_DOWN: "连接状态",
+  CELLULAR_UP: "连接状态",
+  INTERNET_DOWN: "用户路径",
+  INTERNET_UP: "用户路径",
+  HIGH_PACKET_LOSS: "用户路径",
+  LOW_SINR: "无线质量",
+};
+
 export function eventLabel(type: CpeEvent["type"]): string {
   return EVENT_LABELS[type];
+}
+
+export function eventGroupLabel(type: CpeEvent["type"]): string {
+  return EVENT_GROUPS[type];
 }
 
 export type EventTone = "info" | "warning" | "danger" | "success";
@@ -118,10 +137,31 @@ export function eventTone(type: CpeEvent["type"]): EventTone {
   return "info";
 }
 
+export function eventToneLabel(type: CpeEvent["type"]): string {
+  const tone = eventTone(type);
+  if (tone === "danger") return "告警";
+  if (tone === "warning") return "注意";
+  if (tone === "success") return "恢复";
+  return "记录";
+}
+
 export function eventTime(timestamp: string): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
   return date.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+export function eventDateTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).replace(/\//g, "-");
 }
 
 export function eventDetail(item: CpeEvent): string {
@@ -130,6 +170,26 @@ export function eventDetail(item: CpeEvent): string {
     return `${transition}，持续 ${formatDuration(item.durationMs)}`;
   }
   return transition;
+}
+
+export interface EventContextEntry {
+  label: string;
+  value: string;
+}
+
+export function eventContextEntries(item: CpeEvent): EventContextEntry[] {
+  const contextValue = (key: string): string => eventValue(item.context[key] ?? null);
+  const radio = [item.context.radioMode ?? null, item.context.saNsa ?? null]
+    .map(eventValue)
+    .filter((value) => value !== "—")
+    .join(" / ");
+  return [
+    { label: "网络", value: radio || "—" },
+    { label: "PLMN", value: contextValue("plmn") },
+    { label: "频段", value: contextValue("band") },
+    { label: "PCI", value: contextValue("pci") },
+    { label: "Cell ID", value: contextValue("cellId") },
+  ].filter((entry) => entry.value !== "—");
 }
 
 export function formatDuration(durationMs: number): string {

@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | [iPhone Field Test Mode](https://www.waveform.com/guides/field-test-guide) | 诊断信息完整，适合把专业字段放进向下滚动的详细区 | 不把首页做成密集工程表；首屏只保留连接状态、RSRP、SINR、RSRQ 和网络质量 | Apple/iOS 诊断界面，仅作信息层级参考，不复制 UI、图标或文案 |
 | [MarvenAPPS/huawei-5g-signal-monitor](https://github.com/MarvenAPPS/huawei-5g-signal-monitor) | PCC/SCell、邻区和测量信息组织得清楚，适合观察多载波结构 | 保留动态 PCC/SCell/Neighbor 数组，但重新实现组件、样式和字段显示 | GPL-3.0；只参考公开行为和信息组织，不复制前端或 Python 实现 |
-| [louislam/uptime-kuma](https://github.com/louislam/uptime-kuma) | 状态页把在线状态、异常和历史事件放在同一条阅读路径上 | 用 Cellular / Internet 双状态和高铁事件时间线表达“有信号但无 Internet” | MIT；本项目没有引入其代码或依赖 |
+| [louislam/uptime-kuma](https://github.com/louislam/uptime-kuma) | 状态页把在线状态、异常和历史事件放在同一条阅读路径上 | 用 Cellular / Internet 双状态和设备日志时间线表达“有信号但无 Internet” | MIT；本项目没有引入其代码或依赖 |
 
 ## 本轮设计结论
 
@@ -25,7 +25,7 @@
 5. 最近 60 秒曲线
 6. PCC/SCell、邻区、完整字段和事件时间线
 
-这条顺序更贴合高铁、隧道和弱信号场景：用户先看连接是否仍然可用，再判断是无线变化还是用户路径断流。
+这条顺序更贴合移动、隧道和弱信号场景：用户先看连接是否仍然可用，再判断是无线变化还是用户路径断流。
 
 ### 2. 手机端使用“平面分层”，不使用装饰性大图
 

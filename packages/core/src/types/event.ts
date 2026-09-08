@@ -1,4 +1,4 @@
-/** Event categories reserved for the high-speed cellular timeline. */
+/** Event categories reserved for the device timeline. */
 export type CpeEventType =
   | "CELL_CHANGED"
   | "PCI_CHANGED"

@@ -7,7 +7,7 @@ subject to real H168 and Surge validation.
 
 ## Context
 
-高铁场景需要把不同频率的读取合并成连续快照，并区分 Cellular 与 Internet。React
+移动弱信号场景需要把不同频率的读取合并成连续快照，并区分 Cellular 与 Internet。React
 组件各自设置 timer 会导致请求重复、时间戳不一致，也会把认证并发问题带进 Surge。
 
 ## Options
