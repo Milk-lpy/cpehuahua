@@ -1,3 +1,5 @@
+import type { BridgeRequestGate } from "../live/bridge-request-gate";
+
 export type ControlAction =
   | "sms.list"
   | "sms.send"
@@ -70,4 +72,5 @@ export interface ControlClientOptions {
   rememberSession: () => boolean;
   rememberPassword?: () => boolean;
   fetcher?: typeof fetch;
+  requestGate?: BridgeRequestGate;
 }

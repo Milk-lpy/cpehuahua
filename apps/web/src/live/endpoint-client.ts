@@ -1,5 +1,6 @@
 import { H168_PROBE_ENDPOINTS } from "@cpehuahua/core";
 import type { EndpointProbeResult, ProbeEndpoint } from "@cpehuahua/core";
+import { BridgeRequestGate } from "./bridge-request-gate";
 
 interface EndpointBridgePayload {
   schemaVersion: 1;
@@ -13,6 +14,7 @@ export interface EndpointClientOptions {
   rememberPassword?: () => boolean;
   fetcher?: typeof fetch;
   onGateway?: (gateway: string | null) => void;
+  requestGate?: BridgeRequestGate;
 }
 
 function bridgePath(value: string, route: string): string {
@@ -98,6 +100,7 @@ export class H168EndpointClient {
   private readonly rememberPassword: () => boolean;
   private readonly fetcher: typeof fetch;
   private readonly onGateway: ((gateway: string | null) => void) | undefined;
+  private readonly requestGate: BridgeRequestGate;
   private deviceConfirmed = false;
   private sessionPrimed = false;
   private latestGateway: string | null = null;
@@ -110,6 +113,7 @@ export class H168EndpointClient {
     this.rememberPassword = options.rememberPassword ?? (() => false);
     this.fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
     this.onGateway = options.onGateway;
+    this.requestGate = options.requestGate ?? new BridgeRequestGate();
   }
 
   get gateway(): string | null {
@@ -135,6 +139,10 @@ export class H168EndpointClient {
   }
 
   async read(endpoint: ProbeEndpoint, forceLogin = false): Promise<EndpointProbeResult> {
+    return this.requestGate.run(() => this.readUnlocked(endpoint, forceLogin));
+  }
+
+  private async readUnlocked(endpoint: ProbeEndpoint, forceLogin = false): Promise<EndpointProbeResult> {
     if (endpoint.id !== "device-basic-information" && !this.deviceConfirmed) {
       throw new Error("必须先通过 basic_information 确认 H168-383");
     }

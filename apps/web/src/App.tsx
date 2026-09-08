@@ -6,6 +6,7 @@ import { DashboardPage } from "./dashboard/DashboardPage";
 import { LoginPage } from "./auth/LoginPage";
 import { loadAuthPreferences, saveAuthPreferences } from "./live/auth-storage";
 import { H168EndpointClient } from "./live/endpoint-client";
+import { BridgeRequestGate } from "./live/bridge-request-gate";
 import { DevicePollingSession } from "./live/device-session";
 import { SurgeNetworkProbeClient } from "./live/network-client";
 import { loadNetworkProbeUrl } from "./live/network-settings";
@@ -86,13 +87,15 @@ function App() {
   const liveClientRef = useRef<H168EndpointClient | null>(null);
   const livePasswordRef = useRef("");
   const autoLoginAttemptedRef = useRef(false);
+  const bridgeRequestGate = useMemo(() => new BridgeRequestGate(), [bridgeUrl]);
 
   const liveError = Object.values(liveErrors)[0] ?? null;
   const controlClient = useMemo(() => new H168ControlClient(bridgeUrl, {
     getPassword: () => livePasswordRef.current,
     rememberSession: () => true,
     rememberPassword: () => rememberPassword,
-  }), [bridgeUrl, rememberPassword]);
+    requestGate: bridgeRequestGate,
+  }), [bridgeUrl, bridgeRequestGate, rememberPassword]);
 
   function startLiveMonitoring(client: H168EndpointClient) {
     liveSessionRef.current?.stop();
@@ -150,6 +153,7 @@ function App() {
       getPassword: () => livePasswordRef.current,
       rememberSession: () => true,
       rememberPassword: () => rememberPassword,
+      requestGate: bridgeRequestGate,
     });
     try {
       await client.authenticate();
