@@ -870,7 +870,9 @@ async function authenticatedGet(context, path) {
   return response;
 }
 
-async function authenticatedPost(context, path, body) {
+async function authenticatedPost(context, path, body, options = {}) {
+  const retryTransport = options.retryTransport !== false;
+  context.lastPostAttempted = false;
   let reauthenticationAttempted = false;
   try {
     await login(context, false);
@@ -881,11 +883,13 @@ async function authenticatedPost(context, path, body) {
   }
   let response;
   try {
+    context.lastPostAttempted = true;
     response = await contextRequest(context, "POST", path, authHeaders(context, context.csrfToken), body);
   } catch (error) {
-    if (!context.password || reauthenticationAttempted) throw error;
+    if (!retryTransport || !context.password || reauthenticationAttempted) throw error;
     reauthenticationAttempted = true;
     await login(context, true);
+    context.lastPostAttempted = true;
     response = await contextRequest(context, "POST", path, authHeaders(context, context.csrfToken), body);
   }
   let parsed = parseXml(response.body);
@@ -1741,8 +1745,31 @@ async function executeControl(context, action, payload) {
     return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified, blocked } };
   }
   if (action === "device.reboot") {
-    const response = await authenticatedPost(context, "/api/device/control", requestXml({ Control: 1 }));
-    return { ...responseStatus(response), data: null };
+    // H168 can close the socket as soon as it accepts the reboot command. Do
+    // not replay this POST: a retry could issue a second reboot. If the POST
+    // was attempted and the transport then disappeared, expose a partial
+    // result so the UI does not report a false hard failure. Actual restart
+    // completion still has to be observed by the next live snapshot.
+    try {
+      const response = await authenticatedPost(
+        context,
+        "/api/device/control",
+        requestXml({ Control: 1 }),
+        { retryTransport: false },
+      );
+      const state = responseStatus(response);
+      return { ...state, data: { accepted: state.status === "ok", verified: false } };
+    } catch (error) {
+      if (context.lastPostAttempted) {
+        return {
+          status: "partial",
+          httpStatus: 0,
+          huaweiError: null,
+          data: { accepted: true, verified: false },
+        };
+      }
+      throw error;
+    }
   }
   throw new Error("未知或尚未开放的控制操作");
 }

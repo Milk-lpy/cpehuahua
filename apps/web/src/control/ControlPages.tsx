@@ -53,7 +53,12 @@ export function ControlPage({ client }: { client: H168ControlClient }) {
   }
   async function doReboot() {
     setReboot(false); setBusy(true); setError(null);
-    try { await client.execute("device.reboot"); setNotice("重启命令已发送，设备和实时连接会暂时离线。" ); }
+    try {
+      const result = await client.execute<{ accepted: boolean; verified: boolean }>("device.reboot");
+      setNotice(result.status === "partial" || !result.data?.verified
+        ? "重启请求已发出；设备会主动断开连接，等待 H168 恢复后再启动实时监控。"
+        : "重启命令已发送，设备和实时连接会暂时离线。");
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "重启失败"); }
     finally { setBusy(false); }
   }
@@ -72,20 +77,78 @@ export function ControlPage({ client }: { client: H168ControlClient }) {
 export function BandLockPage({ client, snapshot }: { client: H168ControlClient; snapshot: CpeSnapshot }) {
   const [state, setState] = useState<NetworkControlState | null>(null), [mode, setMode] = useState("00");
   const [lte, setLte] = useState<number[]>([]), [nr, setNr] = useState<number[]>([]), [busy, setBusy] = useState(false), [confirm, setConfirm] = useState<"apply" | "unlock" | null>(null), [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null);
-  async function refresh() { setBusy(true); setError(null); try { const next = (await client.execute<NetworkControlState>("network.get")).data; const allowedLte = next.supportedLteBands?.length ? next.supportedLteBands : LTE_BANDS; const allowedNr = next.supportedNrBands?.length ? next.supportedNrBands : NR_BANDS; setState(next); setMode(next.networkMode ?? "00"); setLte(next.lockedLteBands.length > 0 ? next.lockedLteBands.filter((band) => allowedLte.includes(band)) : selectedFromMask(next.lteBand, allowedLte)); setNr(next.lockedNrBands.filter((band) => allowedNr.includes(band))); } catch (cause) { setError(cause instanceof Error ? cause.message : "锁频状态读取失败"); } finally { setBusy(false); } }
+  async function refresh() {
+    setBusy(true); setError(null);
+    try {
+      const next = (await client.execute<NetworkControlState>("network.get")).data;
+      const allowedLte = next.supportedLteBands?.length ? next.supportedLteBands : LTE_BANDS;
+      const allowedNr = next.supportedNrBands?.length ? next.supportedNrBands : NR_BANDS;
+      const automatic = next.networkMode === "00" && next.lteLockMode === "0" && next.nrLockMode === "0";
+      const lockStateKnown = next.lteLockMode !== null || next.nrLockMode !== null;
+      setState(next);
+      setMode(next.networkMode ?? "00");
+      setLte(automatic
+        ? []
+        : next.lockedLteBands.length > 0
+          ? next.lockedLteBands.filter((band) => allowedLte.includes(band))
+          : lockStateKnown ? selectedFromMask(next.lteBand, allowedLte) : []);
+      setNr(automatic ? [] : next.lockedNrBands.filter((band) => allowedNr.includes(band)));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "锁频状态读取失败"); }
+    finally { setBusy(false); }
+  }
   useEffect(() => { void refresh(); }, [client]);
   const toggle = (value: number, values: number[], setValues: (next: number[]) => void) => setValues(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
-  async function apply(unlock = false) { if (!state?.networkBand || !state.lockSupported || (!unlock && mode === "03" && lte.length === 0) || (!unlock && mode === "08" && nr.length === 0) || (!unlock && mode === "00" && lte.length === 0 && nr.length === 0)) return; setConfirm(null); setBusy(true); setError(null); setNotice(null); try { if (unlock) { const unlocked = await client.execute<{ verified: boolean }>("network.unlock"); if (!unlocked.data?.verified) throw new Error("设备接受了解锁请求，但回读未确认已解除"); const auto = await client.execute<{ verified: boolean }>("network.set", { networkMode: "00", networkBand: state.networkBand, lteBand: "7FFFFFFFFFFFFFFF", networkOption: state.networkOption ?? "2" }); if (!auto.data?.verified) throw new Error("锁频已解除，但自动选网状态回读未确认"); } else { const selectedLteMask = lte.length > 0 ? bitmask(lte) : state.lteBand ?? "7FFFFFFFFFFFFFFF"; const network = await client.execute<{ verified: boolean }>("network.set", { networkMode: mode, networkBand: state.networkBand, lteBand: selectedLteMask, networkOption: state.networkOption ?? "2" }); if (!network.data?.verified) throw new Error("设备接受了网络模式请求，但回读未确认"); const locked = await client.execute<{ verified: boolean }>("network.lock", { lteBands: mode === "08" ? [] : lte, nrBands: mode === "03" ? [] : nr }); if (!locked.data?.verified) throw new Error("设备接受了锁频请求，但回读与选择不一致"); } setNotice(unlock ? "已恢复自动选网并解除 LTE / NR 锁频。" : "频段配置已提交并回读；设备正在重新选网。" ); await refresh(); } catch (cause) { setError(cause instanceof Error ? cause.message : "锁频失败"); setBusy(false); } }
+  function chooseMode(nextMode: string) {
+    setMode(nextMode);
+    if (nextMode === "00") { setLte([]); setNr([]); }
+    else if (nextMode === "03") setNr([]);
+    else if (nextMode === "08") setLte([]);
+  }
+  async function apply(unlock = false) {
+    const automatic = unlock || mode === "00";
+    if (!state?.networkBand || !state.lockSupported
+      || (!automatic && mode === "03" && lte.length === 0)
+      || (!automatic && mode === "08" && nr.length === 0)) return;
+    setConfirm(null); setBusy(true); setError(null); setNotice(null);
+    try {
+      if (automatic) {
+        const unlocked = await client.execute<{ verified: boolean }>("network.unlock");
+        if (!unlocked.data?.verified) throw new Error("设备接受了解锁请求，但回读未确认已解除");
+        const auto = await client.execute<{ verified: boolean }>("network.set", {
+          networkMode: "00", networkBand: state.networkBand,
+          lteBand: "7FFFFFFFFFFFFFFF", networkOption: state.networkOption ?? "2",
+        });
+        if (!auto.data?.verified) throw new Error("锁频已解除，但自动选网状态回读未确认");
+      } else {
+        const selectedLteMask = lte.length > 0 ? bitmask(lte) : state.lteBand ?? "7FFFFFFFFFFFFFFF";
+        const network = await client.execute<{ verified: boolean }>("network.set", {
+          networkMode: mode, networkBand: state.networkBand, lteBand: selectedLteMask,
+          networkOption: state.networkOption ?? "2",
+        });
+        if (!network.data?.verified) throw new Error("设备接受了网络模式请求，但回读未确认");
+        const locked = await client.execute<{ verified: boolean }>("network.lock", {
+          lteBands: mode === "08" ? [] : lte,
+          nrBands: mode === "03" ? [] : nr,
+        });
+        if (!locked.data?.verified) throw new Error("设备接受了锁频请求，但回读与选择不一致");
+      }
+      setNotice(automatic ? "已恢复自动选网并解除 LTE / NR 锁频。" : "频段配置已提交并回读；设备正在重新选网。");
+      await refresh();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "锁频失败"); setBusy(false); }
+  }
+  const applyingAutomatic = confirm === "unlock" || (confirm === "apply" && mode === "00");
   return <>
     <section className="soft-panel"><div className="section-heading"><div><p className="eyebrow">Current radio</p><h2>当前服务小区</h2></div><span className="count-badge">{snapshot.connection.radioMode} {snapshot.connection.saNsa}</span></div><div className="lock-current"><strong>{snapshot.radio.band ?? "频段未返回"}</strong><span>ARFCN {snapshot.radio.arfcn ?? "—"} · PCI {snapshot.radio.pci ?? "—"}</span></div></section>
     <section className="soft-panel"><div className="section-heading"><div><p className="eyebrow">Band lock</p><h2>自定义锁频</h2></div><button className="soft-button" type="button" disabled={busy} onClick={() => void refresh()}>刷新</button></div>
-      <label className="input-label" htmlFor="network-mode">首选网络</label><select id="network-mode" value={mode} onChange={(event) => setMode(event.target.value)}>{(state?.supportedModes.length ? state.supportedModes : ["00", "03", "08"]).map((value) => <option key={value} value={value}>{value === "00" ? "自动" : value === "03" ? "4G Only" : value === "08" ? "5G Only" : `模式 ${value}`}</option>)}</select>
-      {mode !== "08" && <BandPicker title="4G 频段" prefix="B" bands={state?.supportedLteBands.length ? state.supportedLteBands : LTE_BANDS} selected={lte} onToggle={(band) => toggle(band, lte, setLte)} />}
-      {mode !== "03" && <BandPicker title="5G 频段" prefix="N" bands={state?.supportedNrBands?.length ? state.supportedNrBands : NR_BANDS} selected={nr} onToggle={(band) => toggle(band, nr, setNr)} />}
-      <div className="lock-actions"><button className="soft-button" type="button" disabled={busy || !state?.networkBand || !state.lockSupported} onClick={() => setConfirm("unlock")}>恢复自动</button><button className="primary-button" type="button" disabled={busy || !state?.networkBand || !state.lockSupported || (mode === "03" ? lte.length === 0 : mode === "08" ? nr.length === 0 : lte.length === 0 && nr.length === 0)} onClick={() => setConfirm("apply")}>{busy ? "处理中…" : "应用锁频"}</button></div>
-      <p className="panel-note">{state?.lockSupported ? "可选频段来自 H168 的 bandfreqlist 配置；使用 lock-freq 写入后会立即回读确认。" : "当前设备尚未返回 lock-freq 状态，写入已禁用；请先重新连接 H168 并等待实时数据。"}</p>{notice && <p className="action-notice">{notice}</p>}<ErrorText value={error} />
+      <label className="input-label" htmlFor="network-mode">首选网络</label><select id="network-mode" value={mode} onChange={(event) => chooseMode(event.target.value)}>{(state?.supportedModes.length ? state.supportedModes : ["00", "03", "08"]).map((value) => <option key={value} value={value}>{value === "00" ? "自动" : value === "03" ? "4G Only" : value === "08" ? "5G Only" : `模式 ${value}`}</option>)}</select>
+      {mode === "00" ? <div className="automatic-band-state" role="status"><strong>自动选网</strong><span>不固定 LTE / NR 频段，不需要额外勾选。</span></div> : <>
+        {mode !== "08" && <BandPicker title="4G 频段" prefix="B" bands={state?.supportedLteBands.length ? state.supportedLteBands : LTE_BANDS} selected={lte} onToggle={(band) => toggle(band, lte, setLte)} />}
+        {mode !== "03" && <BandPicker title="5G 频段" prefix="N" bands={state?.supportedNrBands?.length ? state.supportedNrBands : NR_BANDS} selected={nr} onToggle={(band) => toggle(band, nr, setNr)} />}
+      </>}
+      <div className="lock-actions"><button className="soft-button" type="button" disabled={busy || !state?.networkBand || !state.lockSupported} onClick={() => setConfirm("unlock")}>恢复自动</button><button className="primary-button" type="button" disabled={busy || !state?.networkBand || !state.lockSupported || (mode === "03" ? lte.length === 0 : mode === "08" ? nr.length === 0 : false)} onClick={() => setConfirm("apply")}>{busy ? "处理中…" : mode === "00" ? "应用自动模式" : "应用锁频"}</button></div>
+      <p className="panel-note">{mode === "00" ? "自动模式会清除固定 LTE / NR 频段，并恢复设备自动选网。" : state?.lockSupported ? "可选频段来自 H168 的 bandfreqlist 配置；使用 lock-freq 写入后会立即回读确认。" : "当前设备尚未返回 lock-freq 状态，写入已禁用；请先重新连接 H168 并等待实时数据。"}</p>{notice && <p className="action-notice">{notice}</p>}<ErrorText value={error} />
     </section>
-    <ConfirmDialog open={confirm !== null} title={confirm === "unlock" ? "恢复自动选网？" : "应用新的频段配置？"} detail={confirm === "unlock" ? "将恢复自动模式和参考全频段掩码，蜂窝连接会短暂中断。" : `4G: ${lte.map((b) => `B${b}`).join("+") || "无"}；5G: ${nr.map((b) => `N${b}`).join("+") || "无"}。蜂窝连接会短暂中断。`} confirmLabel={confirm === "unlock" ? "确认恢复自动" : "应用并重新选网"} danger onCancel={() => setConfirm(null)} onConfirm={() => void apply(confirm === "unlock")} />
+    <ConfirmDialog open={confirm !== null} title={applyingAutomatic ? "恢复自动选网？" : "应用新的频段配置？"} detail={applyingAutomatic ? "将清除 LTE / NR 固定频段并恢复自动模式，蜂窝连接会短暂中断。" : `4G: ${lte.map((b) => `B${b}`).join("+") || "无"}；5G: ${nr.map((b) => `N${b}`).join("+") || "无"}。蜂窝连接会短暂中断。`} confirmLabel={applyingAutomatic ? "确认恢复自动" : "应用并重新选网"} danger onCancel={() => setConfirm(null)} onConfirm={() => void apply(applyingAutomatic)} />
   </>;
 }
 
