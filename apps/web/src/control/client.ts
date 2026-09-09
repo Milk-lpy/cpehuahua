@@ -20,15 +20,18 @@ export class H168ControlClient {
   async execute<T>(action: ControlAction, values: Record<string, unknown> = {}): Promise<ControlResponse<T>> {
     return this.requestGate.run(async () => {
       const password = this.options.getPassword();
+      const localAuthCleanup = action === "auth.forget" || action === "auth.logout";
       const response = await (this.options.fetcher ?? fetch)(this.url, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({
           action,
           ...values,
-          ...(password ? { password } : {}),
-          rememberSession: this.options.rememberSession(),
-          rememberPassword: this.options.rememberPassword?.() ?? false,
+          ...(!localAuthCleanup && password ? { password } : {}),
+          ...(!localAuthCleanup ? {
+            rememberSession: this.options.rememberSession(),
+            rememberPassword: this.options.rememberPassword?.() ?? false,
+          } : {}),
         }),
       });
       const payload = await response.json() as unknown;

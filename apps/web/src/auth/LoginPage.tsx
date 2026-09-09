@@ -4,16 +4,18 @@ interface LoginPageProps {
   busy: boolean;
   error: string | null;
   rememberPassword: boolean;
+  autoLogin: boolean;
   onSubmit: (password: string) => void;
   onRememberPasswordChange: (value: boolean) => void;
+  onAutoLoginChange: (value: boolean) => void;
 }
 
-export function LoginPage({ busy, error, rememberPassword, onSubmit, onRememberPasswordChange }: LoginPageProps) {
+export function LoginPage({ busy, error, rememberPassword, autoLogin, onSubmit, onRememberPasswordChange, onAutoLoginChange }: LoginPageProps) {
   const [password, setPassword] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!password) return;
+    if (!password && !rememberPassword) return;
     onSubmit(password);
   }
 
@@ -33,16 +35,20 @@ export function LoginPage({ busy, error, rememberPassword, onSubmit, onRememberP
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
             autoFocus
-            placeholder="输入 H168 管理密码"
+            placeholder={rememberPassword ? "已保存密码，可直接登录" : "输入 H168 管理密码"}
             disabled={busy}
           />
           <label className="remember-row">
             <input type="checkbox" checked={rememberPassword} onChange={(event) => onRememberPasswordChange(event.target.checked)} disabled={busy} />
-            <span><strong>记住密码并自动登录</strong><small>密码只由本地 Surge Bridge 保存，不写入网页存储。</small></span>
+            <span><strong>记住密码</strong><small>密码只由本地 Surge Bridge 保存，不写入网页存储。</small></span>
+          </label>
+          <label className="remember-row">
+            <input type="checkbox" checked={autoLogin} onChange={(event) => onAutoLoginChange(event.target.checked)} disabled={busy || !rememberPassword} />
+            <span><strong>自动登录</strong><small>下次打开页面后自动验证，并立即进入实时概览。</small></span>
           </label>
           {error && <p className="action-error" role="alert">{error}</p>}
-          <button className="primary-button full-button" type="submit" disabled={busy || password.length === 0}>
-            {busy ? "正在验证…" : "登录并进入概览"}
+          <button className="primary-button full-button" type="submit" disabled={busy || (!rememberPassword && password.length === 0)}>
+            {busy ? "正在验证…" : rememberPassword && password.length === 0 ? "使用已保存密码登录" : "登录并进入概览"}
           </button>
         </form>
         <p className="login-note">请确认 iPhone 已连接 H168 Wi-Fi，且 Surge Module 正在接管本地 Bridge。</p>

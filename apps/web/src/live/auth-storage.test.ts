@@ -24,24 +24,32 @@ class MemoryStorage implements StorageLike {
 
 describe("auth preferences storage", () => {
   it("defaults to no automatic login", () => {
-    expect(loadAuthPreferences(new MemoryStorage())).toEqual({ rememberPassword: false });
+    expect(loadAuthPreferences(new MemoryStorage())).toEqual({ rememberPassword: false, autoLogin: false });
   });
 
-  it("round-trips only the remember-password preference", () => {
+  it("round-trips separate remember-password and automatic-login preferences", () => {
     const storage = new MemoryStorage();
 
-    expect(saveAuthPreferences({ rememberPassword: true }, storage)).toBe(true);
-    expect(loadAuthPreferences(storage)).toEqual({ rememberPassword: true });
+    expect(saveAuthPreferences({ rememberPassword: true, autoLogin: false }, storage)).toBe(true);
+    expect(loadAuthPreferences(storage)).toEqual({ rememberPassword: true, autoLogin: false });
     expect(storage.getItem(authPreferencesStorageKey)).not.toContain("secret");
-    expect(storage.getItem(authPreferencesStorageKey)).not.toContain("password");
+  });
+
+  it("migrates the old coupled preference and prevents auto login without a remembered password", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(authPreferencesStorageKey, JSON.stringify({ rememberPassword: true }));
+    expect(loadAuthPreferences(storage)).toEqual({ rememberPassword: true, autoLogin: true });
+
+    expect(saveAuthPreferences({ rememberPassword: false, autoLogin: true }, storage)).toBe(true);
+    expect(loadAuthPreferences(storage)).toEqual({ rememberPassword: false, autoLogin: false });
   });
 
   it("ignores malformed or unsupported stored values", () => {
     const storage = new MemoryStorage();
     storage.setItem(authPreferencesStorageKey, "not-json");
-    expect(loadAuthPreferences(storage)).toEqual({ rememberPassword: false });
+    expect(loadAuthPreferences(storage)).toEqual({ rememberPassword: false, autoLogin: false });
 
     storage.setItem(authPreferencesStorageKey, JSON.stringify({ rememberPassword: "yes" }));
-    expect(loadAuthPreferences(storage)).toEqual({ rememberPassword: false });
+    expect(loadAuthPreferences(storage)).toEqual({ rememberPassword: false, autoLogin: false });
   });
 });

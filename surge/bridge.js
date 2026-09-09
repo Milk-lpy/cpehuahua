@@ -42,10 +42,26 @@ const REAUTH_ON_NO_RIGHTS_PATHS = new Set([
   "/api/net/lock-freq",
   "/config/network/bandfreqlist.xml",
   "/api/dialup/mobile-dataswitch",
+  "/api/net/reconnect",
+  "/api/monitoring/clear-traffic",
+  "/api/monitoring/month_statistics",
+  "/api/monitoring/check-notifications",
+  "/api/sms/sms-count",
   "/api/wlan/host-list",
   "/api/wlan/multi-basic-settings",
+  "/api/wlan/multi-security-settings",
+  "/api/wlan/multi-security-settings-ex",
+  "/api/wlan/multi-switch-settings",
+  "/api/wlan/wifi-feature-switch",
   "/api/wlan/multi-macfilter-settings-ex",
   "/api/wlan/multi-macfilter-settings",
+  "/api/online-update/autoupdate-config",
+  "/api/led/nightmode",
+  "/api/led/appctrlled",
+  "/api/diagnosis/time_reboot",
+  "/api/vpn/status",
+  "/api/vpn/feature-switch",
+  "/api/ntwk/dualwaninfo",
   "/api/device/control",
 ]);
 
@@ -359,6 +375,21 @@ function saveStoredState(context) {
   } else {
     $persistentStore.write(null, STORE_KEY);
   }
+}
+
+function clearStoredState() {
+  $persistentStore.write(null, STORE_KEY);
+}
+
+function forgetStoredPassword() {
+  const state = parseStoredState();
+  delete state.password;
+  state.rememberPassword = false;
+  if (state.rememberSession === true && state.cookies && state.csrfToken) {
+    $persistentStore.write(JSON.stringify(state), STORE_KEY);
+    return;
+  }
+  $persistentStore.write(null, STORE_KEY);
 }
 
 function headerEntries(headers) {
@@ -1477,7 +1508,89 @@ function wlanHosts(rawXml) {
     associatedSeconds: xmlNumber(block, ["AssociatedTime"]),
     ipAddress: xmlText(block, ["IpAddress"]),
     macAddress: xmlText(block, ["MacAddress"]),
+    downloadRateBps: rateFromHost(block, ["CurrentDownloadRate", "DownloadRate", "RxRate"]),
+    uploadRateBps: rateFromHost(block, ["CurrentUploadRate", "UploadRate", "TxRate"]),
+    totalDownloadBytes: xmlNumber(block, ["TotalDownload", "Download"]),
+    totalUploadBytes: xmlNumber(block, ["TotalUpload", "Upload"]),
+    linkRateMbps: xmlNumber(block, ["WifiRate", "LinkRate", "NegotiatedRate"]),
   })).filter((host) => host.macAddress !== null);
+}
+
+function rateFromHost(rawXml, names) {
+  const value = xmlNumber(rawXml, names);
+  return value === null ? null : value * 8;
+}
+
+function boolText(rawXml, names) {
+  const value = xmlText(rawXml, names)?.toLowerCase();
+  if (["1", "true", "on", "enabled", "enable"].includes(value)) return true;
+  if (["0", "false", "off", "disabled", "disable"].includes(value)) return false;
+  return null;
+}
+
+async function optionalGet(context, path) {
+  try {
+    const response = await authenticatedGet(context, path);
+    return { response, error: null };
+  } catch (error) {
+    return { response: null, error: error instanceof Error ? error.message : "设备读取失败" };
+  }
+}
+
+function featureCapability(result, names, label) {
+  if (!result.response) {
+    return { status: "unverified", value: null, reason: label + "读取失败，未开放写入。" };
+  }
+  const state = responseStatus(result.response);
+  if (state.status === "ok") {
+    const booleanValue = boolText(result.response.body, names);
+    const textValue = xmlText(result.response.body, names);
+    return {
+      status: "read-only",
+      value: booleanValue === null ? textValue : booleanValue,
+      reason: "设备已返回只读状态，但尚无本机写入回读证据。",
+    };
+  }
+  if (state.huaweiError?.code === 100002 || state.huaweiError?.code === 100003) {
+    return { status: "unsupported", value: null, reason: "当前 H168 固件拒绝了该候选接口。" };
+  }
+  return { status: "unverified", value: null, reason: label + "尚未通过设备确认。" };
+}
+
+function unverifiedFeature(reason) {
+  return { status: "unverified", value: null, reason };
+}
+
+function wlanRadio(block) {
+  const id = xmlText(block, ["ID"]) || "";
+  const radio = id.match(/Radio\.(\d+)\./i)?.[1] || null;
+  if (radio === "1") return "2.4GHz";
+  if (radio === "2") return "5GHz_1";
+  if (radio === "3") return "5GHz_2";
+  return "unknown";
+}
+
+function wlanSsids(rawXml) {
+  return xmlBlocks(rawXml, "Ssid").map((block) => {
+    const securityModes = (xmlText(block, ["wifisupportsecmodelist"]) || "")
+      .split(/\s+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    return {
+      index: xmlText(block, ["Index"]),
+      radio: wlanRadio(block),
+      name: xmlText(block, ["WifiSsid"]),
+      enabled: boolText(block, ["WifiEnable"]),
+      guest: boolText(block, ["wifiisguestnetwork"]),
+      authMode: xmlText(block, ["WifiAuthmode"]),
+      supportedSecurityModes: securityModes,
+      broadcast: boolText(block, ["WifiBroadcast"]),
+      maxClients: xmlNumber(block, ["chip_max_assoc", "WifiMaxAssoc"]),
+      bandwidth: xmlText(block, ["wifibandwidth", "WifiBandwidth"]),
+      channel: xmlText(block, ["WifiChannel", "channel"]),
+      wifiMode: xmlText(block, ["WifiMode", "wifimode"]),
+    };
+  }).filter((ssid) => ssid.index !== null);
 }
 
 function numericBands(values) {
@@ -1586,6 +1699,90 @@ async function verifyControlTarget(context) {
 }
 
 async function executeControl(context, action, payload) {
+  if (action === "features.get") {
+    const deviceInformation = await optionalGet(context, "/api/device/information");
+    const vpn = await optionalGet(context, "/api/vpn/status");
+    const led = await optionalGet(context, "/api/led/appctrlled");
+    const ledSchedule = await optionalGet(context, "/api/led/nightmode");
+    const timedRestart = await optionalGet(context, "/api/diagnosis/time_reboot");
+    const dualWan = await optionalGet(context, "/api/ntwk/dualwaninfo");
+    const wlanFeatures = await optionalGet(context, "/api/wlan/wifi-feature-switch");
+    const wlanSwitches = await optionalGet(context, "/api/wlan/multi-switch-settings");
+    const wlanBasic = await optionalGet(context, "/api/wlan/multi-basic-settings");
+    const noH168WriteEvidence = "当前 H168 实机资料没有对应写入接口证据。";
+    const deviceState = deviceInformation.response && responseStatus(deviceInformation.response).status === "ok"
+      ? {
+          status: "read-only",
+          value: Boolean(xmlText(deviceInformation.response.body, ["WanIPv6Address", "wan_ipv6_dns_address"])),
+          reason: "已从设备信息确认 IPv6 状态；切换方式仍需 APN/Profile 写入证据。",
+        }
+      : unverifiedFeature("未能从设备信息确认 IPv6 状态。" );
+    const guestEnabled = wlanBasic.response && responseStatus(wlanBasic.response).status === "ok"
+      ? wlanSsids(wlanBasic.response.body).some((ssid) => ssid.guest === true && ssid.enabled === true)
+      : null;
+    return { status: "ok", httpStatus: 200, huaweiError: null, data: {
+      ipv6: deviceState,
+      nfc: unverifiedFeature(noH168WriteEvidence),
+      vpn: featureCapability(vpn, ["vpnstatus", "VpnStatus", "enable", "status"], "VPN"),
+      appAcceleration: unverifiedFeature(noH168WriteEvidence),
+      ambientLight: featureCapability(led, ["AppCtrlLed", "enable", "status"], "氛围灯"),
+      dualWanTurbo: featureCapability(dualWan, ["enable", "Enable", "dualwan_enable", "DualWanEnable"], "双宽带 Turbo"),
+      automaticFailover: featureCapability(dualWan, ["autoswitch", "AutoSwitch", "switch_enable"], "自动切换"),
+      triBandOptimization: featureCapability(wlanFeatures, ["triband_enable", "TriBandEnable", "triplefrequency_enable"], "三频优选"),
+      mlo: featureCapability(wlanFeatures, ["mlo_enable", "MloEnable", "MLOEnable"], "WLAN MLO"),
+      pmf: featureCapability(wlanSwitches, ["pmf_enable", "PmfEnable", "PMFEnable"], "WLAN PMF"),
+      backupNetwork: guestEnabled === null
+        ? unverifiedFeature("设备未返回可确认的备用 SSID 状态。")
+        : { status: "read-only", value: guestEnabled, reason: "已读取设备 Guest/备用 SSID 状态；安全回写格式尚未确认。" },
+      scheduledRestart: featureCapability(timedRestart, ["enable", "Enable", "time_reboot", "TimeReboot"], "定时重启"),
+      scheduledLedOff: featureCapability(ledSchedule, ["NightMode", "enable", "Enable"], "信号灯定时关闭"),
+    } };
+  }
+  if (action === "wlan.get") {
+    const response = await authenticatedGet(context, "/api/wlan/multi-basic-settings");
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: null };
+    return { ...state, data: {
+      ssids: wlanSsids(response.body),
+      compatibilityMode: xmlText(response.body, ["wifiCompat"]),
+      compatibilityEnabled: boolText(response.body, ["wifiCompatEnable"]),
+      dbhoEnabled: boolText(response.body, ["DbhoEnable"]),
+      writeSupported: false,
+      writeReason: "H168 会隐藏现有 WLAN 密码，而通用接口要求整组 SSID 回写；为避免清空密码或断开当前管理网络，暂不开放写入。",
+    } };
+  }
+  if (action === "maintenance.get") {
+    const autoUpdate = await optionalGet(context, "/api/online-update/autoupdate-config");
+    const timedRestart = await optionalGet(context, "/api/diagnosis/time_reboot");
+    const ledSchedule = await optionalGet(context, "/api/led/nightmode");
+    const updateState = autoUpdate.response ? responseStatus(autoUpdate.response) : null;
+    return { status: "ok", httpStatus: 200, huaweiError: null, data: {
+      autoUpdateSupported: updateState?.status === "ok",
+      autoUpdate: updateState?.status === "ok" ? boolText(autoUpdate.response.body, ["auto_update"]) : null,
+      uiDownload: updateState?.status === "ok" ? boolText(autoUpdate.response.body, ["ui_download"]) : null,
+      timedRestart: featureCapability(timedRestart, ["enable", "Enable", "time_reboot", "TimeReboot"], "定时重启"),
+      ledSchedule: featureCapability(ledSchedule, ["NightMode", "enable", "Enable"], "信号灯定时关闭"),
+    } };
+  }
+  if (action === "maintenance.auto-update") {
+    if (typeof payload.enabled !== "boolean") throw new Error("自动升级开关参数无效");
+    const current = await authenticatedGet(context, "/api/online-update/autoupdate-config");
+    const currentState = responseStatus(current);
+    if (currentState.status !== "ok") return { ...currentState, data: null };
+    const uiDownload = boolText(current.body, ["ui_download"]) === true ? 1 : 0;
+    const response = await authenticatedPost(
+      context,
+      "/api/online-update/autoupdate-config",
+      requestXml({ auto_update: payload.enabled ? 1 : 0, ui_download: uiDownload }),
+      { retryTransport: false },
+    );
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: null };
+    const readback = await authenticatedGet(context, "/api/online-update/autoupdate-config");
+    const verified = responseStatus(readback).status === "ok"
+      && boolText(readback.body, ["auto_update"]) === payload.enabled;
+    return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified } };
+  }
   if (action === "sms.list") {
     const box = [1, 2].includes(Number(payload.box)) ? Number(payload.box) : 1;
     const page = Math.max(1, Math.min(50, Number(payload.page) || 1));
@@ -1700,6 +1897,64 @@ async function executeControl(context, action, payload) {
     const verified = responseStatus(readback).status === "ok" && (xmlText(readback.body, ["dataswitch"]) === "1") === payload.enabled;
     return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { verified } };
   }
+  if (action === "network.reconnect") {
+    try {
+      const response = await authenticatedPost(
+        context,
+        "/api/net/reconnect",
+        requestXml({ ReconnectAction: 1 }),
+        { retryTransport: false },
+      );
+      const state = responseStatus(response);
+      return { ...state, data: { accepted: state.status === "ok", verified: false } };
+    } catch (error) {
+      if (context.lastPostAttempted) {
+        return { status: "partial", httpStatus: 0, huaweiError: null, data: { accepted: true, verified: false } };
+      }
+      throw error;
+    }
+  }
+  if (action === "traffic.clear") {
+    const beforeTraffic = await authenticatedGet(context, "/api/monitoring/traffic-statistics");
+    const beforeMonth = await authenticatedGet(context, "/api/monitoring/month_statistics");
+    if (responseStatus(beforeTraffic).status !== "ok" && responseStatus(beforeMonth).status !== "ok") {
+      throw new Error("无法读取清零前的流量统计，已拒绝执行");
+    }
+    const response = await authenticatedPost(
+      context,
+      "/api/monitoring/clear-traffic",
+      requestXml({ ClearTraffic: 1 }),
+      { retryTransport: false },
+    );
+    const state = responseStatus(response);
+    if (state.status !== "ok") return { ...state, data: null };
+    const traffic = await authenticatedGet(context, "/api/monitoring/traffic-statistics");
+    const month = await authenticatedGet(context, "/api/monitoring/month_statistics");
+    const readbackOk = responseStatus(traffic).status === "ok" && responseStatus(month).status === "ok";
+    const beforeCurrent = (xmlNumber(beforeTraffic.body, ["CurrentDownload"]) ?? 0)
+      + (xmlNumber(beforeTraffic.body, ["CurrentUpload"]) ?? 0);
+    const afterCurrent = (xmlNumber(traffic.body, ["CurrentDownload"]) ?? 0)
+      + (xmlNumber(traffic.body, ["CurrentUpload"]) ?? 0);
+    const beforeMonthly = (xmlNumber(beforeMonth.body, ["CurrentMonthDownload"]) ?? 0)
+      + (xmlNumber(beforeMonth.body, ["CurrentMonthUpload"]) ?? 0);
+    const afterMonthly = (xmlNumber(month.body, ["CurrentMonthDownload"]) ?? 0)
+      + (xmlNumber(month.body, ["CurrentMonthUpload"]) ?? 0);
+    const beforeClearDate = xmlText(beforeMonth.body, ["MonthLastClearTime"]);
+    const afterClearDate = xmlText(month.body, ["MonthLastClearTime"]);
+    const verified = readbackOk && (
+      afterCurrent < beforeCurrent
+      || afterMonthly < beforeMonthly
+      || (beforeClearDate !== null && afterClearDate !== null && beforeClearDate !== afterClearDate)
+    );
+    return { status: verified ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: {
+      accepted: true,
+      verified,
+      readbackAvailable: readbackOk,
+      currentDownloadBytes: readbackOk ? xmlNumber(traffic.body, ["CurrentDownload"]) : null,
+      currentUploadBytes: readbackOk ? xmlNumber(traffic.body, ["CurrentUpload"]) : null,
+      monthLastClearDate: readbackOk ? afterClearDate : null,
+    } };
+  }
   if (action === "clients.list") {
     const response = await authenticatedGet(context, "/api/wlan/host-list");
     const basic = await authenticatedGet(context, "/api/wlan/multi-basic-settings");
@@ -1719,7 +1974,7 @@ async function executeControl(context, action, payload) {
       const ssidName = Array.from(ssids.entries()).find((entry) => entry[1] === filteredSsid.index)?.[0] || null;
       for (const device of filteredSsid.blacklist) {
         if (clients.some((client) => client.macAddress.toLowerCase() === device.macAddress.toLowerCase())) continue;
-        clients.push({ id: null, name: device.hostName || null, hostName: device.hostName || null, manufacturer: null, deviceType: null, frequency: null, ssid: ssidName, associatedSeconds: null, ipAddress: null, macAddress: device.macAddress, ssidIndex: filteredSsid.index, blocked: true, canControl: true });
+        clients.push({ id: null, name: device.hostName || null, hostName: device.hostName || null, manufacturer: null, deviceType: null, frequency: null, ssid: ssidName, associatedSeconds: null, ipAddress: null, macAddress: device.macAddress, ssidIndex: filteredSsid.index, blocked: true, canControl: true, downloadRateBps: null, uploadRateBps: null, totalDownloadBytes: null, totalUploadBytes: null, linkRateMbps: null });
       }
     }
     return { status: basicOk && filtersOk ? "ok" : "partial", httpStatus: response.status, huaweiError: null, data: { clients, filterEnabled: filterState.enabled, filterStatus: filterState.status } };
@@ -1779,15 +2034,29 @@ async function runControl() {
     bridgeResponse(405, { error: "Control route requires POST" });
     return;
   }
-  const gateway = gatewayAddress();
-  if (!gateway) {
-    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接 H168 Wi-Fi。" });
-    return;
-  }
   const payload = requestPayload();
   const action = typeof payload.action === "string" ? payload.action : "";
   if (!action) {
     bridgeResponse(400, { error: "缺少控制操作" });
+    return;
+  }
+  if (action === "auth.forget" || action === "auth.logout") {
+    if (action === "auth.forget") forgetStoredPassword();
+    else clearStoredState();
+    bridgeResponse(200, {
+      schemaVersion: 1,
+      gateway: gatewayAddress() || "",
+      action,
+      status: "ok",
+      httpStatus: 200,
+      huaweiError: null,
+      data: { cleared: true },
+    });
+    return;
+  }
+  const gateway = gatewayAddress();
+  if (!gateway) {
+    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接 H168 Wi-Fi。" });
     return;
   }
   const context = contextFromRequest();

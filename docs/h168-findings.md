@@ -1,6 +1,6 @@
 # H168-383 Findings
 
-更新时间：2026-09-07
+更新时间：2026-09-09
 
 ## 当前结论
 
@@ -214,6 +214,30 @@ N1/N3/N5/N7/N8/N20/N28/N38/N40/N41/N71/N77/N78/N79。虽然 `net-mode-list` 的 
 本次导出还暴露了 Cell ID/TAC/LAC 的位置隐私风险；新版导出会一并脱敏这些字段，
 本地实时标准化仍使用设备原始值，不影响切换检测。
 
+## 第八批界面与控制边界整理（2026-09-09）
+
+根据用户提供的九张移动端界面截图，生产界面已整理为概览、控制、锁频、参数、短信、
+设置六个主页面，并保留独立的“设备日志”详情页。登录页把“记住密码”和“自动登录”
+拆成两个独立选项；只有成功认证后才进入概览并启动实时轮询。Probe 页面继续从生产
+导航隐藏，但 `/api/probe` 诊断接口仍保留，便于后续补充脱敏实机证据。
+
+本轮只把已有 H168 读取证据或通用 Huawei 协议中可以安全回读的操作接入控制层：移动
+数据、网络模式、LTE/NR Band 锁定与自动解锁、网络重连、流量清零、短信、终端黑名单、
+设备重启，以及“先 GET、保留 `ui_download`、POST 后再 GET”的自动升级开关。自动
+模式下锁频 UI 会清空并禁用 Band 勾选，避免把界面残留选项误认为设备已锁定。
+
+新增的 WLAN、VPN、LED、定时重启、双 WAN 和高级 WLAN 候选均先做只读能力探测；
+没有 H168 安全写入形状时保持只读或不可用。尤其 `/api/timerule/timerule` 在旧 Huawei
+WebUI 中属于上网/家长控制时间规则，不能作为定时重启接口，因此已从定时重启候选和
+重认证白名单中移除；定时重启只探测 `/api/diagnosis/time_reboot`。当前开发主机无法
+直连用户的 H168，所以上述 POST 仍必须由用户升级 Surge Module 后在 iPhone 本地逐项
+操作，并以设备回读结果判定成功，仓库不把 host fixture 或 UI 成功提示算作实机验证。
+
+首页载波卡的 SCC 只来自 `/api/device/seccellinfo`；`/api/device/nbrcellinfo` 只进入
+锁频页的邻区列表，不会替代或补造 SCC。设备日志可记录轮询样本间的状态、Cell ID、
+PCI 和信号变化；单次 Probe 的 endpoint 延迟不是 CPE 切网时长，1 秒信号轮询最多只能
+给出约 1 秒粒度的切换时间区间。
+
 ## 已知差异
 
 1. 用户指定的 `lvcdy/huawei-lte-api-go` 当前仓库实际上是 Rust crate（`Cargo.toml`
@@ -223,16 +247,16 @@ N1/N3/N5/N7/N8/N20/N28/N38/N40/N41/N71/N77/N78/N79。虽然 `net-mode-list` 的 
 3. 该仓库 README 明确列出的 H168-383 实测端点包含 `device/signal`、
    `device/information`、`monitoring/status`、`traffic-statistics`、
    `current-plmn`、`basic_information` 等，但没有把 `seccellinfo`/
-   `nbrcellinfo` 列入 H168 实测成功清单；后两者目前只能作为待探测的 Brovi
-   补充端点。
+   `nbrcellinfo` 列入 H168 实测成功清单；不过本项目随后已从用户设备取得两者的
+   成功响应，因此上游清单只作为历史差异，不再限制本项目的 `live-observed` 状态。
 4. `cpemanager` 的最新登录修复是依据新 Huawei HAR，并在 handoff 中明确写着仍需
    用真实 Huawei 设备验证 `125003` 是否消失；所以本项目不会把该流程写成已实机
    确认。
 5. `MarvenAPPS/5g-cpe-signal-monitor` 当前 README 的测试设备是 H155-381、H153-381
    和 D-Link，不是 H168-383；其 MCS/CQI/MIMO/Tx Power 样例不能直接标为 H168 支持。
-6. 两组 H168 实机样本的 `seccellinfo` 都返回 1 条 NR 记录，且该记录与 PCC 的关键
-   标识相同；原始 SCell 数组继续保留，展示层会标注“与 PCC 身份一致，CA 语义待确认”，
-   并且不会把镜像记录重复计入聚合标签。
+6. 较早两组 H168 样本的 `seccellinfo` 各返回 1 条 NR 记录，最新样本返回
+   NRARFCN 627264 与 633984 两条 N78 记录。原始 SCell 数组按设备响应完整保留，
+   不根据 PCC、Band 或 PCI 自行去重，也不把邻区补成 SCC。
 
 ## 端点证据表
 
@@ -243,7 +267,7 @@ N1/N3/N5/N7/N8/N20/N28/N38/N40/N41/N71/N77/N78/N79。虽然 `net-mode-list` 的 
 | `/api/net/current-plmn` | `live-observed` H168-383 实机 HTTP 200 | Probe 默认读取；保留 `FullName`/`Numeric`/`Rat`/`State` 原始值，代码含义待确认 |
 | `/api/device/signal` | `live-observed` H168-383 实机 HTTP 200 | 已观察 `mode=12`、通用 PCI/Cell/TAC、NR 测量和复合 MCS/TX 字段；复合值不压成单值 |
 | `/api/monitoring/traffic-statistics` | `live-observed` H168-383 实机 HTTP 200 | 已观察当前/累计流量和速率；单位与用户路径吞吐仍待交叉确认 |
-| `/api/device/seccellinfo` | `live-observed` H168-383 实机 HTTP 200 | 已观察一个 NR SCell 记录和空 LTE 列表，继续保留动态数组 |
+| `/api/device/seccellinfo` | `live-observed` H168-383 实机 HTTP 200 | 已观察 1 条与 2 条 NR SCell 的动态样本及空 LTE 列表；按设备响应完整保留 |
 | `/api/device/nbrcellinfo` | `live-observed` H168-383 实机 HTTP 200 | 已观察六个 NR 邻区记录和空 LTE 列表，继续保留动态数组 |
 | `/api/webserver/SesTokInfo` | `live-observed` H168-383 实机 HTTP 200 | 本次返回成功；Cookie/Token 轮换细节仍待专门验证 |
 | `/api/user/challenge_login` | `reference` cpemanager 新登录流程 | 只实现登录 POST，不作为 Dashboard 数据 |
@@ -279,6 +303,9 @@ N1/N3/N5/N7/N8/N20/N28/N38/N40/N41/N71/N77/N78/N79。虽然 `net-mode-list` 的 
 | 网络模式和 Band | `/api/net/net-mode`、`/api/net/lock-freq` | 两个 GET 均已实测；lock-freq POST 仍待操作回读 |
 | 终端断网/恢复 | `/api/wlan/multi-basic-settings`、`multi-macfilter-settings-ex`、`multi-macfilter-settings` | SSID 索引和过滤 GET 已实测；按索引保留现有黑名单并提供撤销，POST 待回读 |
 | 设备重启 | `/api/device/control` + `Control=1` | 多个 HiLink 实现一致，当前 H168 未验证 |
+| 网络重连 | `/api/net/reconnect` + `ReconnectAction=1` | 通用 Huawei 参考形状；连接中断后无法用同一请求证明链路恢复 |
+| 流量清零 | `/api/monitoring/clear-traffic` + `ClearTraffic=1` | 旧 Huawei WebUI 参考形状；POST 后读取当前/月流量，不把读取成功等同于计数一定归零 |
+| 自动升级 | `/api/online-update/autoupdate-config` | 仅当 GET 成功时开放；保留 `ui_download` 并在 POST 后回读 `auto_update` |
 
 没有开放任意 endpoint/XML 透传，也没有开放恢复出厂、升级、关机、AT/开发者模式。
 终端限速和重命名、锁 PCI/锁小区、完整 WLAN/APN 控制需要新的 H168 实机读取证据。

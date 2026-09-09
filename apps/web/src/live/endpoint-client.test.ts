@@ -32,6 +32,16 @@ const monitoringEndpoint: ProbeEndpoint = {
   evidence: "h168-live-observed",
 };
 
+const smsCountEndpoint: ProbeEndpoint = {
+  id: "sms-count",
+  label: "SMS mailbox counts",
+  path: "/api/sms/sms-count",
+  intervalMs: 10_000,
+  requiresAuth: true,
+  defaultEnabled: true,
+  evidence: "h168-live-observed",
+};
+
 function response(forEndpoint = endpoint): EndpointProbeResult {
   return {
     endpoint: forEndpoint,
@@ -242,6 +252,43 @@ describe("H168EndpointClient", () => {
     await client.read(basicEndpoint);
     await client.read(endpoint);
     await client.read(endpoint);
+
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(requests[2]?.method).toBe("GET");
+    expect(requests[3]?.method).toBe("POST");
+    expect(JSON.parse(String(requests[3]?.body)).password).toBe("secret");
+  });
+
+  it("also recovers an expired session for the live SMS counters", async () => {
+    const requests: RequestInit[] = [];
+    const expired = {
+      ...response(smsCountEndpoint),
+      status: "huawei-error" as const,
+      huaweiError: { code: 100003, rawCode: "100003", message: null },
+    };
+    const results = [
+      response(basicEndpoint),
+      response(smsCountEndpoint),
+      expired,
+      response(smsCountEndpoint),
+    ];
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(init ?? {});
+      return new Response(JSON.stringify({
+        schemaVersion: 1,
+        gateway: "192.168.8.1",
+        endpointResult: results.shift() ?? response(smsCountEndpoint),
+      }), { status: 200 });
+    });
+    const client = new H168EndpointClient("https://bridge.example/api/probe", {
+      getPassword: () => "secret",
+      rememberSession: () => true,
+      fetcher,
+    });
+
+    await client.read(basicEndpoint);
+    await client.read(smsCountEndpoint);
+    await client.read(smsCountEndpoint);
 
     expect(fetcher).toHaveBeenCalledTimes(4);
     expect(requests[2]?.method).toBe("GET");

@@ -4,6 +4,7 @@ const AUTH_PREFERENCES_KEY = "cpehuahua.auth-preferences.v1";
 
 export interface AuthPreferences {
   rememberPassword: boolean;
+  autoLogin: boolean;
 }
 
 function defaultStorage(): StorageLike | null {
@@ -17,12 +18,17 @@ function defaultStorage(): StorageLike | null {
 export function loadAuthPreferences(storage: StorageLike | null = defaultStorage()): AuthPreferences {
   try {
     const raw = storage?.getItem(AUTH_PREFERENCES_KEY);
-    if (!raw) return { rememberPassword: false };
+    if (!raw) return { rememberPassword: false, autoLogin: false };
     const value: unknown = JSON.parse(raw);
-    if (typeof value !== "object" || value === null) return { rememberPassword: false };
-    return { rememberPassword: (value as { rememberPassword?: unknown }).rememberPassword === true };
+    if (typeof value !== "object" || value === null) return { rememberPassword: false, autoLogin: false };
+    const preferences = value as { rememberPassword?: unknown; autoLogin?: unknown };
+    const rememberPassword = preferences.rememberPassword === true;
+    // Older builds coupled both choices. Missing autoLogin therefore preserves
+    // the old behaviour once, while all new saves keep the switches separate.
+    const autoLogin = rememberPassword && (preferences.autoLogin === undefined || preferences.autoLogin === true);
+    return { rememberPassword, autoLogin };
   } catch {
-    return { rememberPassword: false };
+    return { rememberPassword: false, autoLogin: false };
   }
 }
 
@@ -32,7 +38,10 @@ export function saveAuthPreferences(
 ): boolean {
   if (!storage) return false;
   try {
-    storage.setItem(AUTH_PREFERENCES_KEY, JSON.stringify(preferences));
+    storage.setItem(AUTH_PREFERENCES_KEY, JSON.stringify({
+      rememberPassword: preferences.rememberPassword,
+      autoLogin: preferences.rememberPassword && preferences.autoLogin,
+    }));
     return true;
   } catch {
     return false;

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { isMirroredSecondaryCell, type CapabilityStatus, type CpeCell, type CpeEvent, type CpeSnapshot } from "@cpehuahua/core";
+import { type CapabilityStatus, type CpeCell, type CpeEvent, type CpeSnapshot } from "@cpehuahua/core";
 import { BottomNav, type AppView } from "../ui/BottomNav";
-import { BandLockPage, ControlPage, ManagedClients, MessagesPage } from "../control/ControlPages";
+import { BandLockPage, ConfirmDialog, ControlPage, ManagedClients, MessagesPage, SettingsPage } from "../control/ControlPages";
 import { H168ControlClient } from "../control/client";
+import { loadUiPreferences, saveUiPreferences, type UiPreferences } from "../live/ui-preferences";
 import { aggregationLabel, capabilityText, chartPoints, DASHBOARD_METRICS, eventContextEntries, eventDateTime, eventDetail, eventGroupLabel, eventLabel, eventTime, eventTone, eventToneLabel, formatDuration, formatMetric, metricDefinition, statusText, type DashboardMetricId } from "./view-model";
 
 interface DashboardPageProps {
@@ -19,6 +20,11 @@ interface DashboardPageProps {
   onNavigate: (view: AppView) => void;
   onClearCache: () => void;
   controlClient: H168ControlClient;
+  rememberPassword: boolean;
+  autoLogin: boolean;
+  onRememberPasswordChange: (value: boolean) => void;
+  onAutoLoginChange: (value: boolean) => void;
+  onLogout: () => void;
 }
 
 function Value({ value, unit = "" }: { value: number | string | null; unit?: string }) {
@@ -53,9 +59,10 @@ function LineChart({ history, metric }: { history: readonly CpeSnapshot[]; metri
 
 function SignalRing({ value }: { value: number | null }) {
   const score = value === null ? 0 : Math.max(0, Math.min(100, (value + 125) * 2));
+  const quality = value === null ? "未返回" : value >= -85 ? "优" : value >= -95 ? "良" : value >= -105 ? "一般" : "弱";
   return <div className="signal-ring">
     <svg viewBox="0 0 120 120" aria-hidden="true"><circle className="signal-ring__track" cx="60" cy="60" r="50" pathLength="100" /><circle className="signal-ring__value" cx="60" cy="60" r="50" pathLength="100" strokeDasharray={`${score} 100`} /></svg>
-    <div><span>RSRP</span><strong>{value === null ? "—" : value}</strong><small>{value === null ? "未返回" : "dBm"}</small></div>
+    <div><span>信号强度</span><strong>{value === null ? "—" : value}</strong><small>{quality}</small></div>
   </div>;
 }
 
@@ -92,29 +99,67 @@ function combinedBytes(download: number | null, upload: number | null): number |
   return download === null && upload === null ? null : (download ?? 0) + (upload ?? 0);
 }
 
-function Overview({ snapshot, history, events, networkProbeConfigured, onNavigate }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; events: readonly CpeEvent[]; networkProbeConfigured: boolean; onNavigate: (view: AppView) => void }) {
-  const [metric, setMetric] = useState<DashboardMetricId>("rsrpDbm"), pcc = snapshot.cells.pcc;
-  const secondaryCells = snapshot.cells.scells;
+function CarrierCard({ cell, role }: { cell: CpeCell; role: "PCC" | "SCC" }) {
+  return <article className="carrier-card"><div className="carrier-heading"><span className={`carrier-role carrier-role--${role.toLowerCase()}`}>{role}</span><strong>{cell.band ?? cell.technology} · {cell.bandwidth ?? "带宽未返回"}</strong><dl><div><dt>NRARFCN</dt><dd>{cell.arfcn ?? "—"}</dd></div><div><dt>PCI</dt><dd>{cell.pci ?? "—"}</dd></div></dl></div><div className="radio-stat-grid"><SignalBar label="RSRP" value={cell.rsrpDbm} unit="dBm" min={-125} max={-70} /><SignalBar label="RSRQ" value={cell.rsrqDb} unit="dB" min={-25} max={-3} /><SignalBar label="RSSI" value={cell.rssiDbm} unit="dBm" min={-105} max={-45} /><SignalBar label="SINR" value={cell.sinrDb} unit="dB" min={-10} max={30} /></div></article>;
+}
+
+function numericInput(value: number | null): string { return value === null ? "" : String(value); }
+function inputNumber(value: string): number | null {
+  if (value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 1_000_000 ? parsed : null;
+}
+
+function TrafficPanel({ snapshot, history, client }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; client: H168ControlClient }) {
+  const [preferences, setPreferences] = useState<UiPreferences>(() => loadUiPreferences());
+  const [editing, setEditing] = useState(false);
+  const [pendingClear, setPendingClear] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function update(patch: Partial<UiPreferences>) {
+    const next = { ...preferences, ...patch };
+    setPreferences(next);
+    saveUiPreferences(next);
+  }
+
+  async function clearTraffic() {
+    setPendingClear(false);
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await client.execute<{ accepted: boolean; verified: boolean; readbackAvailable: boolean; monthLastClearDate: string | null }>("traffic.clear");
+      if (!result.data?.accepted) throw new Error("设备未确认接收清零请求");
+      setNotice(result.data.verified
+        ? `流量统计已清零并确认计数变化${result.data.monthLastClearDate ? `（${result.data.monthLastClearDate}）` : ""}。`
+        : result.data.readbackAvailable
+          ? "设备已接受请求并返回最新统计，但计数变化尚不足以确认清零。"
+          : "设备已接受清零请求，等待实时统计刷新。" );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "流量统计清零失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <><section className="soft-panel speed-panel"><SectionTitle eyebrow="实时速率" title="" badge="1 秒刷新" /><div className="speed-grid speed-grid--spark"><div><b className="rate-icon rate-icon--down">↓</b><span>下载<strong>{formatRate(snapshot.network.downloadBps)}</strong></span><Sparkline history={history} field="downloadBps" /></div><div><b className="rate-icon rate-icon--up">↑</b><span>上传<strong>{formatRate(snapshot.network.uploadBps)}</strong></span><Sparkline history={history} field="uploadBps" /></div></div></section>
+    <section className="soft-panel contract-panel"><div className="section-heading"><div><p className="eyebrow">签约速率</p><h2>宽带套餐</h2></div><button type="button" className="icon-button" aria-label="编辑签约速率" onClick={() => setEditing((value) => !value)}>↻</button></div><div className="contract-grid"><label>下行<input inputMode="decimal" placeholder="--" value={numericInput(preferences.contractedDownloadMbps)} disabled={!editing} onChange={(event) => update({ contractedDownloadMbps: inputNumber(event.target.value) })} /><small>Mbps</small></label><label>上行<input inputMode="decimal" placeholder="--" value={numericInput(preferences.contractedUploadMbps)} disabled={!editing} onChange={(event) => update({ contractedUploadMbps: inputNumber(event.target.value) })} /><small>Mbps</small></label></div><p className="panel-note">签约速率仅保存在当前浏览器，用于和实时速率对照。</p></section>
+    <section className="soft-panel traffic-panel"><div className="section-heading"><div><p className="eyebrow">流量统计</p><h2>套餐与用量</h2></div><span className="muted-label">上次清空 {snapshot.network.monthLastClearDate ?? "—"}</span></div><div className="plan-settings"><label><span><strong>日套餐设置</strong><small>{preferences.dayLimitGb ? `${preferences.dayLimitGb} GB` : "未设置额度"}</small></span><input type="checkbox" checked={preferences.dayPlanEnabled} onChange={(event) => update({ dayPlanEnabled: event.target.checked })} /></label>{preferences.dayPlanEnabled && <label className="limit-input">每日额度<input inputMode="decimal" value={numericInput(preferences.dayLimitGb)} onChange={(event) => update({ dayLimitGb: inputNumber(event.target.value) })} /><span>GB</span></label>}<label><span><strong>月套餐设置</strong><small>{preferences.monthLimitGb ? `${preferences.monthLimitGb} GB` : "未设置额度"}</small></span><input type="checkbox" checked={preferences.monthPlanEnabled} onChange={(event) => update({ monthPlanEnabled: event.target.checked })} /></label>{preferences.monthPlanEnabled && <label className="limit-input">每月额度<input inputMode="decimal" value={numericInput(preferences.monthLimitGb)} onChange={(event) => update({ monthLimitGb: inputNumber(event.target.value) })} /><span>GB</span></label>}</div><div className="usage-table"><div><b>类型</b><b>当前</b><b>日</b><b>月</b></div><div><span>已用</span><strong>{formatBytes(combinedBytes(snapshot.network.currentDownloadBytes, snapshot.network.currentUploadBytes))}</strong><strong>{formatBytes(snapshot.network.dayUsedBytes)}</strong><strong>{formatBytes(combinedBytes(snapshot.network.monthDownloadBytes, snapshot.network.monthUploadBytes))}</strong></div><div><span>时间</span><strong>{formatUptime(snapshot.network.currentConnectSeconds)}</strong><strong>{formatUptime(snapshot.network.dayDurationSeconds)}</strong><strong>{formatUptime(snapshot.network.monthDurationSeconds)}</strong></div></div><button className="primary-button clear-traffic-button" type="button" disabled={busy} onClick={() => setPendingClear(true)}>{busy ? "正在清零…" : "清空流量统计"}</button>{notice && <p className="action-notice">{notice}</p>}{error && <p className="action-error" role="alert">{error}</p>}</section>
+    <ConfirmDialog open={pendingClear} title="清空设备流量统计？" detail="会清除 H168 中的累计流量和统计周期，操作不可撤销；不会删除短信或终端设置。" confirmLabel="确认清空" danger onCancel={() => setPendingClear(false)} onConfirm={() => void clearTraffic()} /></>;
+}
+
+function Overview({ snapshot, history, events, networkProbeConfigured, onNavigate, controlClient }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; events: readonly CpeEvent[]; networkProbeConfigured: boolean; onNavigate: (view: AppView) => void; controlClient: H168ControlClient }) {
+  const [metric, setMetric] = useState<DashboardMetricId>("rsrpDbm");
+  const pcc = snapshot.cells.pcc;
   return <>
-    <section className="hero-card hero-card--focus"><div className="hero-title"><div><h1>{snapshot.device.model ?? "H168"}</h1><p>◷ 本地监控快照 · {new Date(snapshot.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</p></div><span>{snapshot.connection.operatorName ?? "蜂窝网络"} {snapshot.connection.radioMode}</span></div><div className="signal-stage"><SignalRing value={snapshot.radio.rsrpDbm} /><aside><small>RSRP</small><strong>{formatMetric(snapshot.radio.rsrpDbm, "dBm")}</strong></aside><p>♧ 数值越大越好</p></div><div className="connection-deck"><div><b className="cellular-icon">▥</b><span><strong>蜂窝 <em>{statusText(snapshot.connection.cellularOnline)}</em></strong><small>蜂窝网络状态</small></span></div><div><b className="internet-icon">◎</b><span><strong>Internet <em>{statusText(snapshot.connection.internetOnline)}</em></strong><small>互联网连接状态</small></span></div></div></section>
-    <section className="soft-panel serving-panel"><SectionTitle eyebrow="服务小区（当前主小区 PCC）" title="" badge="⌃" /><div className="serving-identity"><span>{snapshot.connection.radioMode} {snapshot.connection.saNsa}</span><strong>{pcc?.band ?? "频段未返回"} · {pcc?.bandwidth ?? "—"}</strong><dl><div><dt>NRARFCN</dt><dd>{pcc?.arfcn ?? "—"}</dd></div><div><dt>PCI</dt><dd>{pcc?.pci ?? "—"}</dd></div><div><dt>PLMN</dt><dd>{snapshot.connection.plmn ?? "—"}</dd></div></dl></div><div className="secondary-band-row"><span className="secondary-band-label">另外的 SCC</span><div className="secondary-band-values">{secondaryCells.length ? secondaryCells.map((cell, index) => { const mirrored = isMirroredSecondaryCell(snapshot, cell); return <span className={`secondary-band-chip${mirrored ? " is-mirrored" : ""}`} key={`${cell.arfcn ?? "unknown"}-${index}`}><strong>{cell.band ?? "频段未返回"}</strong><small>{cell.arfcn ? `ARFCN ${cell.arfcn}` : "ARFCN 未返回"}{mirrored ? " · PCC 同标识" : ""}</small></span>; }) : <span className="value-null">未返回</span>}</div></div><div className="radio-stat-grid"><SignalBar label="RSRP" value={snapshot.radio.rsrpDbm} unit="dBm" min={-125} max={-70} /><SignalBar label="RSRQ" value={snapshot.radio.rsrqDb} unit="dB" min={-25} max={-3} /><SignalBar label="RSSI" value={snapshot.radio.rssiDbm} unit="dBm" min={-105} max={-45} /><SignalBar label="SINR" value={snapshot.radio.sinrDb} unit="dB" min={-10} max={30} /></div></section>
-    <section className="soft-panel speed-panel"><SectionTitle eyebrow="实时速率" title="" badge="单位自动换算" /><div className="speed-grid speed-grid--spark"><div><b className="rate-icon rate-icon--down">↓</b><span>下载<strong>{formatRate(snapshot.network.downloadBps)}</strong></span><Sparkline history={history} field="downloadBps" /></div><div><b className="rate-icon rate-icon--up">↑</b><span>上传<strong>{formatRate(snapshot.network.uploadBps)}</strong></span><Sparkline history={history} field="uploadBps" /></div></div><div className="usage-grid"><span><small>本次</small><b>{formatBytes(combinedBytes(snapshot.network.currentDownloadBytes, snapshot.network.currentUploadBytes))}</b><em>{formatUptime(snapshot.network.currentConnectSeconds)}</em></span><span><small>今日</small><b>{formatBytes(snapshot.network.dayUsedBytes)}</b><em>{formatUptime(snapshot.network.dayDurationSeconds)}</em></span><span><small>本月</small><b>{formatBytes(combinedBytes(snapshot.network.monthDownloadBytes, snapshot.network.monthUploadBytes))}</b><em>{formatUptime(snapshot.network.monthDurationSeconds)}</em></span></div></section>
+    <section className="hero-card hero-card--focus"><div className="hero-title"><div><h1>{snapshot.connection.operatorName ?? "蜂窝网络"} {snapshot.connection.radioMode === "5G" ? "5G-A" : snapshot.connection.radioMode}</h1><p>{snapshot.device.model ?? "H168"} · {snapshot.connection.saNsa} · {new Date(snapshot.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</p></div><span className={snapshot.connection.cellularOnline ? "is-online" : ""}>{statusText(snapshot.connection.cellularOnline)}</span></div><div className="signal-stage"><SignalRing value={snapshot.radio.rsrpDbm} /><p>当前信号强度 · 数值越接近 0 越好</p></div></section>
+    <section className="soft-panel carrier-panel"><SectionTitle eyebrow="信号详情" title="服务载波" badge={(pcc ? 1 : 0) + snapshot.cells.scells.length} /><div className="carrier-list">{pcc ? <CarrierCard cell={pcc} role="PCC" /> : <Empty text="设备未返回主载波。" />}{snapshot.cells.scells.map((cell, index) => <CarrierCard key={`scc-${cell.arfcn ?? index}-${cell.pci ?? index}`} cell={cell} role="SCC" />)}</div></section>
+    <TrafficPanel snapshot={snapshot} history={history} client={controlClient} />
+    <ManagedClients client={controlClient} />
     <section className="soft-panel telemetry-panel"><SectionTitle eyebrow="实时曲线（最近 60 秒）" title="" /><div className="metric-tabs">{DASHBOARD_METRICS.slice(0, 4).map((item) => <button key={item.id} type="button" className={metric === item.id ? "is-active" : ""} onClick={() => setMetric(item.id)}>{item.label}</button>)}</div><LineChart history={history} metric={metric} /></section>
     <section className="soft-panel log-preview-panel"><div className="section-heading"><div><p className="eyebrow">本地实时记录</p><h2>设备日志</h2></div><div className="section-heading__actions"><span className="count-badge">{events.length}</span><button className="soft-button" type="button" onClick={() => onNavigate("logs")}>全部日志</button></div></div>{events.length === 0 ? <Empty text="保持实时监控，信号和小区变化会记录在这里。" /> : <EventList events={events.slice(-3)} />}{!networkProbeConfigured && <p className="panel-note">Internet 用户路径探测尚未配置，状态保持未验证。</p>}</section>
-  </>;
-}
-
-function CellCard({ cell, title, mirrored = false }: { cell: CpeCell; title: string; mirrored?: boolean }) {
-  return <article className="cell-card"><div className="cell-card__heading"><div><p className="eyebrow">{title}</p><h3>{cell.band ?? "频段未返回"}</h3></div><span className="tech-badge">{cell.technology}</span></div>{mirrored && <p className="mirror-note">与 PCC 身份一致；保留设备原始返回，CA 语义待确认。</p>}<div className="cell-metrics"><span>PCI <b>{cell.pci ?? "—"}</b></span><span>ARFCN <b>{cell.arfcn ?? "—"}</b></span><span>RSRP <b>{formatMetric(cell.rsrpDbm, "dBm")}</b></span><span>SINR <b>{formatMetric(cell.sinrDb, "dB")}</b></span></div></article>;
-}
-
-function CellsPage({ snapshot }: { snapshot: CpeSnapshot }) {
-  const values = Object.values(snapshot.capabilities), observed = values.filter((value) => value === "observed").length, unknown = values.filter((value) => value === "unknown").length, unsupported = values.filter((value) => value === "unsupported").length;
-  return <>
-    <section className="soft-panel"><SectionTitle eyebrow="Serving cells" title="服务小区" badge={(snapshot.cells.pcc ? 1 : 0) + snapshot.cells.scells.length} /><div className="card-stack">{snapshot.cells.pcc ? <CellCard cell={snapshot.cells.pcc} title="PCC · 主载波" /> : <Empty text="设备未返回可解析 PCC。" />}{snapshot.cells.scells.map((cell, index) => <CellCard key={`s-${index}`} cell={cell} title={`SCC ${index + 1} · 另外的副载波`} mirrored={isMirroredSecondaryCell(snapshot, cell)} />)}</div></section>
-    <section className="soft-panel"><SectionTitle eyebrow="Neighbor cells" title="邻区" badge={snapshot.cells.neighbors.length} /><div className="card-stack">{snapshot.cells.neighbors.length ? snapshot.cells.neighbors.map((cell, index) => <CellCard key={`n-${index}`} cell={cell} title={`Neighbor ${index + 1}`} />) : <Empty text="当前没有已解析邻区。" />}</div></section>
-    <section className="soft-panel"><SectionTitle eyebrow="Advanced radio" title="无线证据" /><DetailList items={[["Band", snapshot.radio.band], ["Bandwidth", snapshot.radio.bandwidth], ["RRC 原始状态", snapshot.radio.rrcStatus], ["CQI", snapshot.radio.cqi], ["MIMO Rank", snapshot.radio.mimoRank], ["BLER", snapshot.radio.blerPct, "%"], ["MCS (DL) 原始", snapshot.radio.rawEvidence?.dlMcs ?? null], ["MCS (UL) 原始", snapshot.radio.rawEvidence?.ulMcs ?? null], ["TX Power 原始", snapshot.radio.rawEvidence?.txPower ?? null]]} /><p className="panel-note">复合字段保留设备原文，不虚构单一数值。</p></section>
-    <section className="soft-panel"><SectionTitle eyebrow="Capability" title="字段证据" /><div className="capability-summary"><span><b>{observed}</b> 已观察</span><span><b>{unknown}</b> 未验证</span><span><b>{unsupported}</b> 被拒绝</span></div><details className="capability-details"><summary>查看全部字段状态</summary><div className="capability-grid">{Object.entries(snapshot.capabilities).map(([key, value]) => <span key={key} className={`capability-item is-${value}`}><b>{key}</b><em>{capabilityText(value as CapabilityStatus)}</em></span>)}</div></details></section>
   </>;
 }
 
@@ -148,8 +193,19 @@ function DeviceLogsPage({ events, snapshot, networkProbeConfigured }: { events: 
   return <><section className="soft-panel event-hero"><div className="section-heading"><div><p className="eyebrow">连续实时快照</p><h2>设备日志</h2></div><span className="count-badge">{events.length} 条</span></div><p className="logs-lede">只展示连续实时快照确认的连接、小区和网络质量变化；不会用样例补写日志。</p><div className="log-summary-grid"><div><small>当前状态</small><strong>{currentStatus}</strong><span>以最新快照为准</span></div><div><small>累计记录</small><strong>{events.length}</strong><span>本地会话</span></div><div><small>告警 / 注意</small><strong>{attentionCount}</strong><span>需要关注的记录</span></div><div><small>最后记录</small><strong>{latestEvent ? eventTime(latestEvent.timestamp) : "—"}</strong><span>{latestEvent ? eventLabel(latestEvent.type) : "暂无日志"}</span></div></div>{duration !== null && duration >= 0 ? <div className="outage-card"><span>当前中断持续</span><strong>{formatDuration(duration)}</strong></div> : <p className="panel-note">当前没有从事件序列确认的持续中断。</p>}{!networkProbeConfigured && <p className="panel-note">Internet 用户路径探测尚未配置；相关日志仍会保留设备端连接状态。</p>}</section><section className="soft-panel"><SectionTitle eyebrow="完整时间线" title="全部记录" badge={events.length} />{events.length ? <EventList events={events} detailed /> : <Empty text="暂无设备日志。保持实时监控后，状态变化会显示在这里。" />}</section></>;
 }
 
-function DevicePage({ snapshot, cached, onClearCache, controlClient }: { snapshot: CpeSnapshot; cached: boolean; onClearCache: () => void; controlClient: H168ControlClient }) {
-  return <><ManagedClients client={controlClient} /><section className="soft-panel"><SectionTitle eyebrow="Device" title="设备信息" /><DetailList items={[["设备型号", snapshot.device.model], ["产品名称", snapshot.device.productName], ["开机时长", formatUptime(snapshot.device.uptimeSeconds)], ["硬件版本", snapshot.device.hardwareVersion], ["软件版本", snapshot.device.firmware], ["Web UI 版本", snapshot.device.webUiVersion], ["参数版本", snapshot.device.parameterVersion]]} /></section><section className="soft-panel"><SectionTitle eyebrow="Network identity" title="网络身份" /><DetailList items={[["运营商", snapshot.connection.operatorName], ["PLMN", snapshot.connection.plmn], ["Huawei 状态码", snapshot.connection.cellularStatusCode], ["模式", snapshot.connection.radioMode], ["SA / NSA", snapshot.connection.saNsa], ["Cell ID", snapshot.radio.cellId], ["TAC", snapshot.radio.tac]]} /></section><section className="soft-panel privacy-card"><SectionTitle eyebrow="Privacy" title="本地数据" /><p>短信正文、手机号、终端 IP/MAC、密码、Session 和 Token 均不写入浏览器持久存储；关闭页面即释放控制页数据。</p>{cached && <button className="danger-soft-button" type="button" onClick={onClearCache}>清除本地快照</button>}</section></>;
+function ParametersPage({ snapshot, events, cached, onClearCache, onNavigate }: { snapshot: CpeSnapshot; events: readonly CpeEvent[]; cached: boolean; onClearCache: () => void; onNavigate: (view: AppView) => void }) {
+  const values = Object.values(snapshot.capabilities);
+  const observed = values.filter((value) => value === "observed").length;
+  const unknown = values.filter((value) => value === "unknown").length;
+  const unsupported = values.filter((value) => value === "unsupported").length;
+  return <>
+    <section className="soft-panel log-entry-panel"><div><p className="eyebrow">独立时间线</p><h2>设备日志</h2><p>查看连接、小区、频段和信号质量的详细变化。</p></div><button className="primary-button" type="button" onClick={() => onNavigate("logs")}>查看 {events.length} 条日志</button></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Device" title="设备信息" /><DetailList items={[["设备型号", snapshot.device.model], ["产品名称", snapshot.device.productName], ["开机时长", formatUptime(snapshot.device.uptimeSeconds)], ["硬件版本", snapshot.device.hardwareVersion], ["软件版本", snapshot.device.firmware], ["Web UI 版本", snapshot.device.webUiVersion], ["参数版本", snapshot.device.parameterVersion]]} /></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Network identity" title="网络身份" /><DetailList items={[["运营商", snapshot.connection.operatorName], ["PLMN", snapshot.connection.plmn], ["Huawei 状态码", snapshot.connection.cellularStatusCode], ["模式", snapshot.connection.radioMode], ["SA / NSA", snapshot.connection.saNsa], ["Cell ID", snapshot.radio.cellId], ["TAC", snapshot.radio.tac]]} /></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Advanced radio" title="无线参数" /><DetailList items={[["Band", snapshot.radio.band], ["Bandwidth", snapshot.radio.bandwidth], ["RRC 原始状态", snapshot.radio.rrcStatus], ["CQI", snapshot.radio.cqi], ["MIMO Rank", snapshot.radio.mimoRank], ["BLER", snapshot.radio.blerPct, "%"], ["MCS (DL) 原始", snapshot.radio.rawEvidence?.dlMcs ?? null], ["MCS (UL) 原始", snapshot.radio.rawEvidence?.ulMcs ?? null], ["TX Power 原始", snapshot.radio.rawEvidence?.txPower ?? null]]} /><p className="panel-note">复合字段保留设备原文，不把多载波表达式伪装成单个数值。</p></section>
+    <section className="soft-panel"><SectionTitle eyebrow="Capability" title="数据能力" /><div className="capability-summary"><span><b>{observed}</b> 已观察</span><span><b>{unknown}</b> 未验证</span><span><b>{unsupported}</b> 不支持</span></div><details className="capability-details"><summary>查看全部字段状态</summary><div className="capability-grid">{Object.entries(snapshot.capabilities).map(([key, value]) => <span key={key} className={`capability-item is-${value}`}><b>{key}</b><em>{capabilityText(value as CapabilityStatus)}</em></span>)}</div></details></section>
+    <section className="soft-panel privacy-card"><SectionTitle eyebrow="Privacy" title="本地数据" /><p>短信正文、手机号、终端 IP/MAC、密码、Session 和 Token 均不写入快照缓存；终端别名仅按不含 MAC 的 Host ID 保存在当前浏览器。</p>{cached && <button className="danger-soft-button" type="button" onClick={onClearCache}>清除本地快照</button>}</section>
+  </>;
 }
 
 function formatUptime(seconds: number | null): string { if (seconds === null) return "—"; const days = Math.floor(seconds / 86400), hours = Math.floor((seconds % 86400) / 3600), minutes = Math.floor((seconds % 3600) / 60); return `${days ? `${days}天 ` : ""}${hours}时${minutes}分`; }
@@ -158,5 +214,18 @@ function Empty({ text }: { text: string }) { return <div className="empty-state"
 export function DashboardPage(props: DashboardPageProps) {
   const { snapshot, activeView, liveMonitoring, liveError, cached, onNavigate } = props;
   if (snapshot === null) return <main className="app-shell"><header className="app-header"><div className="brand-line"><span className="brand-paw">●</span><strong>CPE 花花</strong><i>已登录</i></div><h1>正在连接 H168</h1><p className="lede">认证已通过，正在读取第一份实时快照。</p><button className="primary-button" type="button" onClick={props.onRetryLive} disabled={liveMonitoring}>{liveMonitoring ? "实时抓取中…" : "重新连接"}</button></header>{liveError && <div className="error-banner" role="alert">{liveError}</div>}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
-  return <main className="app-shell dashboard-shell"><PageHeader liveMonitoring={liveMonitoring} onToggleLive={props.onToggleLive} />{liveError && <div className="error-banner dashboard-error" role="alert">{liveError}</div>}{snapshot.source !== "live" && <div className="evidence-banner">当前为 {snapshot.source === "fixture" ? "fixture 参考" : "未知来源"}，不代表实机验证。</div>}{cached && <div className="evidence-banner evidence-banner--cached">正在显示浏览器保存的最近快照，实时连接建立后会更新。</div>}{activeView === "overview" && <Overview snapshot={snapshot} history={props.history} events={props.events} networkProbeConfigured={props.networkProbeConfigured} onNavigate={onNavigate} />}{activeView === "logs" && <DeviceLogsPage events={props.events} snapshot={snapshot} networkProbeConfigured={props.networkProbeConfigured} />}{activeView === "control" && <ControlPage client={props.controlClient} />}{activeView === "cells" && <BandLockPage client={props.controlClient} snapshot={snapshot} />}{activeView === "device" && <DevicePage snapshot={snapshot} cached={cached} onClearCache={props.onClearCache} controlClient={props.controlClient} />}{activeView === "messages" && <MessagesPage client={props.controlClient} />}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
+  return <main className="app-shell dashboard-shell">
+    <PageHeader liveMonitoring={liveMonitoring} onToggleLive={props.onToggleLive} />
+    {liveError && <div className="error-banner dashboard-error" role="alert">{liveError}</div>}
+    {snapshot.source !== "live" && <div className="evidence-banner">当前为 {snapshot.source === "fixture" ? "fixture 参考" : "未知来源"}，不代表实机验证。</div>}
+    {cached && <div className="evidence-banner evidence-banner--cached">正在显示浏览器保存的最近快照，实时连接建立后会更新。</div>}
+    {activeView === "overview" && <Overview snapshot={snapshot} history={props.history} events={props.events} networkProbeConfigured={props.networkProbeConfigured} onNavigate={onNavigate} controlClient={props.controlClient} />}
+    {activeView === "logs" && <DeviceLogsPage events={props.events} snapshot={snapshot} networkProbeConfigured={props.networkProbeConfigured} />}
+    {activeView === "control" && <ControlPage client={props.controlClient} snapshot={snapshot} />}
+    {activeView === "cells" && <BandLockPage client={props.controlClient} snapshot={snapshot} />}
+    {activeView === "parameters" && <ParametersPage snapshot={snapshot} events={props.events} cached={cached} onClearCache={props.onClearCache} onNavigate={onNavigate} />}
+    {activeView === "messages" && <MessagesPage client={props.controlClient} summary={snapshot.messaging} />}
+    {activeView === "settings" && <SettingsPage client={props.controlClient} rememberPassword={props.rememberPassword} autoLogin={props.autoLogin} onRememberPasswordChange={props.onRememberPasswordChange} onAutoLoginChange={props.onAutoLoginChange} onLogout={props.onLogout} />}
+    <BottomNav active={activeView} onNavigate={onNavigate} />
+  </main>;
 }

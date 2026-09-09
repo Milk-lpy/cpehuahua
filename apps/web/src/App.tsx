@@ -77,10 +77,11 @@ function App() {
   const [restoredFromStorage, setRestoredFromStorage] = useState(() => liveReport !== null);
   const [view, setView] = useState<AppView>("overview");
   const [authPreferences] = useState(() => loadAuthPreferences());
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => authPreferences.rememberPassword ? "checking" : "login");
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => authPreferences.rememberPassword && authPreferences.autoLogin ? "checking" : "login");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [rememberPassword, setRememberPassword] = useState(authPreferences.rememberPassword);
+  const [autoLogin, setAutoLogin] = useState(authPreferences.autoLogin);
   const [liveMonitoring, setLiveMonitoring] = useState(false);
   const [liveErrors, setLiveErrors] = useState<Record<string, string>>({});
   const liveSessionRef = useRef<DevicePollingSession | null>(null);
@@ -191,7 +192,35 @@ function App() {
 
   function updateRememberPassword(value: boolean) {
     setRememberPassword(value);
-    saveAuthPreferences({ rememberPassword: value });
+    const nextAutoLogin = value ? autoLogin : false;
+    if (!value) {
+      setAutoLogin(false);
+      void controlClient.execute("auth.forget").catch(() => undefined);
+    }
+    saveAuthPreferences({ rememberPassword: value, autoLogin: nextAutoLogin });
+  }
+
+  function updateAutoLogin(value: boolean) {
+    const next = rememberPassword && value;
+    setAutoLogin(next);
+    saveAuthPreferences({ rememberPassword, autoLogin: next });
+  }
+
+  async function logout() {
+    liveSessionRef.current?.stop();
+    liveSessionRef.current = null;
+    setLiveMonitoring(false);
+    try { await controlClient.execute("auth.logout"); } catch { /* Local UI logout must still complete. */ }
+    liveClientRef.current = null;
+    livePasswordRef.current = "";
+    setRememberPassword(false);
+    setAutoLogin(false);
+    saveAuthPreferences({ rememberPassword: false, autoLogin: false });
+    clearPersistedLiveReport();
+    setLiveReport(null);
+    setRestoredFromStorage(false);
+    setAuthError(null);
+    setAuthStatus("login");
   }
 
   function clearCachedLiveReport() {
@@ -201,7 +230,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!rememberPassword || autoLoginAttemptedRef.current) return;
+    if (!rememberPassword || !autoLogin || autoLoginAttemptedRef.current) return;
     autoLoginAttemptedRef.current = true;
     void authenticateAndStart("", true);
   }, []);
@@ -217,11 +246,13 @@ function App() {
         busy={authLoading}
         error={authError}
         rememberPassword={rememberPassword}
+        autoLogin={autoLogin}
         onSubmit={(value) => {
-          saveAuthPreferences({ rememberPassword });
+          saveAuthPreferences({ rememberPassword, autoLogin });
           void authenticateAndStart(value);
         }}
         onRememberPasswordChange={updateRememberPassword}
+        onAutoLoginChange={updateAutoLogin}
       />
     );
   }
@@ -241,6 +272,11 @@ function App() {
       onNavigate={setView}
       onClearCache={clearCachedLiveReport}
       controlClient={controlClient}
+      rememberPassword={rememberPassword}
+      autoLogin={autoLogin}
+      onRememberPasswordChange={updateRememberPassword}
+      onAutoLoginChange={updateAutoLogin}
+      onLogout={() => void logout()}
     />
   );
 }

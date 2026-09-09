@@ -1,6 +1,6 @@
 # 参考项目研究记录
 
-更新时间：2026-09-07
+更新时间：2026-09-09
 
 本记录只收集协议、端点、字段和行为依据，不把参考仓库的代码直接复制进
 cpehuahua。仓库快照以研究时 checkout 的 commit 为准；GitHub 页面和上游项目会
@@ -16,6 +16,14 @@ cpehuahua。仓库快照以研究时 checkout 的 commit 为准；GitHub 页面�
 | [Salamek/huawei-lte-api](https://github.com/Salamek/huawei-lte-api) | `f416c63d2a01d7e1d743a2d039ae2d1ff6b71df5` | LGPL-3.0 | 通用 HiLink API、旧版 Session/CSRF、错误码和 XML 体系 |
 | [Salamek/huawei-lte-api-ts](https://github.com/Salamek/huawei-lte-api-ts) | `24c2f9b1eaaaf07644db644acda8eee54f0e5b08` | LGPL-3.0（`package.json` 与 `LICENSE`） | 仅参考 TypeScript API 分组和旧版浏览器实现；它没有 H168 新登录验证 |
 | [kenshaw/hilink](https://github.com/kenshaw/hilink) | 2026-09-07 shallow checkout | MIT | 交叉核对短信字段顺序、设备重启、网络模式等通用 HiLink 形状；没有作为依赖或复制实现 |
+| [lvcdy/huawei-cpe](https://github.com/lvcdy/huawei-cpe) | `e690a2727b1650b9d9f97befce72e5f6262e5a88`（最后提交 2026-09-04） | MIT | 参考能力探测、SA/NSA、终端、流量和 WLAN 的产品组织；项目使用 Astro/Svelte/Tailwind/Rust，与本项目静态 React + Surge 架构不兼容，因此不作为依赖，也不复制实现 |
+| [rohan-molloy/sms-gateway](https://github.com/rohan-molloy/sms-gateway) | `44134e194e0eabfc9a2cfd905b2a87866cbb3ea9`（最后提交 2018-12-20） | checkout 中未发现许可证 | 仅核对旧 Huawei 原厂 WebUI 的流量清零和多 SSID 回写形状；年代久且授权不明，只做协议事实参考 |
+| [adron-s/e3372h_my_webroot](https://github.com/adron-s/e3372h_my_webroot) | `6b2c49854fc57b81bd0b60a0efa68cf1e466889f`（最后提交 2017-07-04） | checkout 中未发现许可证 | 核对自动升级、SCRAM 密码修改和 WLAN 请求头；旧设备 WebUI，只做协议事实参考 |
+| [pearlxcore/Huawei-Router-Tool](https://github.com/pearlxcore/Huawei-Router-Tool) | `4841a6ad8c8614728d14512bf4fb5e3f922c2bf9`（最后提交 2024-02-05） | checkout 中未发现许可证 | 交叉核对密码修改和自动升级字段；只做兼容性参考 |
+
+2026-09-09 还以“猴子CPE助手”、截图中的中文标题和页面文案搜索了 GitHub，未找到
+可确认对应的公开源码，因此截图只作为功能与信息架构输入，不能据此推断 H168 写入
+协议。以上新增仓库均没有代码被复制到本项目。
 
 ## H168 相关端点证据
 
@@ -34,8 +42,8 @@ cpehuahua。仓库快照以研究时 checkout 的 commit 为准；GitHub 页面�
 
 这是“上游声明”，不是本项目对用户设备的验证。README 的 H168 实测清单没有把
 `/api/device/seccellinfo` 和 `/api/device/nbrcellinfo` 单独列为 H168 实测成功；这
-两个端点在同一仓库中作为 Brovi 5G 补充端点存在。因此本项目把它们列为 Probe
-候选，直到 H168 实机返回成功后才把 capability 标为 `observed`。
+两个端点在同一仓库中作为 Brovi 5G 补充端点存在。因此本项目最初把它们列为 Probe
+候选；用户 H168 后续已实际返回成功，才把 capability 提升为 `observed`。
 
 ### cpemanager 的端点和字段线索
 
@@ -122,11 +130,14 @@ Phase 2 的状态机按第 2-4 点实现测试基础，未声称已在 H168-383 
   因此这些写入只能作为兼容候选，不能直接标为 H168 已验证。
 - `cpemanager` 记录 Huawei `/api/net/lock-freq`，并展示 H168 相邻型号使用的锁 Band
   流程；`Huawei-router-Hack` 还记录部分 5G 固件在 `/api/net/net-mode` 中接受
-  `NRBand`。本项目先读取当前响应，只有设备实际返回 `NRBand` 才显示 5G 选择器。
+  `NRBand`。本机 H168 的 `net-mode` 没有 `NRBand`，因此锁频以实际可读的
+  `/api/net/lock-freq` 和 `/config/network/bandfreqlist.xml` 为能力源。
 - `wlan/mac-filter` 与多 SSID MAC filter 在通用库中存在，但终端重命名、限速和可靠
   撤销没有得到本机 H168 协议证据；当前只开放带明确警告和二次确认的兼容性断网操作。
+- 旧 WebUI 中的 `/api/timerule/timerule` 用于上网/家长控制时间规则，并非设备定时重启；
+  本项目明确不把它作为 `/api/diagnosis/time_reboot` 的后备接口。
 - 所有写入只通过 Bridge 内置 action 映射，不接受前端传入 endpoint 或 XML。恢复出厂、
-  固件升级、关机、AT/开发者模式不在白名单中。
+  手动固件上传、关机、AT/开发者模式不在白名单中。
 
 ## Surge 约束与依据
 

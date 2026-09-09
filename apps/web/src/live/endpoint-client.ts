@@ -62,6 +62,10 @@ const REAUTH_ON_NO_RIGHTS_ENDPOINTS = new Set([
   "monitoring-traffic-statistics",
   "device-information",
   "net-cell-info",
+  "monitoring-month-statistics",
+  "wlan-host-list",
+  "monitoring-check-notifications",
+  "sms-count",
 ]);
 
 function isSessionFailure(result: EndpointProbeResult, endpoint?: ProbeEndpoint): boolean {
