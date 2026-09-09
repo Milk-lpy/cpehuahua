@@ -3,7 +3,6 @@ import type { BridgeRequestGate } from "../live/bridge-request-gate";
 export type ControlAction =
   | "auth.forget"
   | "auth.logout"
-  | "features.get"
   | "sms.list"
   | "sms.send"
   | "sms.read"
@@ -15,9 +14,6 @@ export type ControlAction =
   | "network.mobile-data"
   | "network.reconnect"
   | "traffic.clear"
-  | "wlan.get"
-  | "maintenance.get"
-  | "maintenance.auto-update"
   | "clients.list"
   | "clients.block"
   | "clients.unblock"
@@ -68,63 +64,6 @@ export interface ManagedClient {
   totalDownloadBytes: number | null;
   totalUploadBytes: number | null;
   linkRateMbps: number | null;
-}
-
-export type FeatureStatus = "available" | "read-only" | "unverified" | "unsupported";
-
-export interface FeatureCapability {
-  status: FeatureStatus;
-  value: boolean | string | number | null;
-  reason: string;
-}
-
-export type DeviceFeatureKey =
-  | "ipv6"
-  | "nfc"
-  | "vpn"
-  | "appAcceleration"
-  | "ambientLight"
-  | "dualWanTurbo"
-  | "automaticFailover"
-  | "triBandOptimization"
-  | "mlo"
-  | "pmf"
-  | "backupNetwork"
-  | "scheduledRestart"
-  | "scheduledLedOff";
-
-export type DeviceFeatureState = Record<DeviceFeatureKey, FeatureCapability>;
-
-export interface WlanSsidState {
-  index: string;
-  radio: "2.4GHz" | "5GHz_1" | "5GHz_2" | "unknown";
-  name: string | null;
-  enabled: boolean | null;
-  guest: boolean | null;
-  authMode: string | null;
-  supportedSecurityModes: string[];
-  broadcast: boolean | null;
-  maxClients: number | null;
-  bandwidth: string | null;
-  channel: string | null;
-  wifiMode: string | null;
-}
-
-export interface WlanControlState {
-  ssids: WlanSsidState[];
-  compatibilityMode: string | null;
-  compatibilityEnabled: boolean | null;
-  dbhoEnabled: boolean | null;
-  writeSupported: boolean;
-  writeReason: string;
-}
-
-export interface MaintenanceControlState {
-  autoUpdateSupported: boolean;
-  autoUpdate: boolean | null;
-  uiDownload: boolean | null;
-  timedRestart: FeatureCapability;
-  ledSchedule: FeatureCapability;
 }
 
 export interface ControlResponse<T = unknown> {

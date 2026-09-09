@@ -163,6 +163,7 @@ describe("DevicePollingSession", () => {
 
     expect(updates.at(-1)?.network.pingMs).toBe(31);
     expect(updates.at(-1)?.connection.internetOnline).toBeNull();
+    expect(updates.at(-1)?.timestamp).toBe("2026-09-05T00:00:00.100Z");
     expect(withUpdates.latestReport?.history).toHaveLength(1);
   });
 

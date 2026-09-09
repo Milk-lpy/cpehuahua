@@ -196,6 +196,7 @@ export class DevicePollingSession {
 
     const snapshot: CpeSnapshot = {
       ...current,
+      timestamp: update.timestamp,
       connection: {
         ...current.connection,
         internetOnline: update.internetOnline,

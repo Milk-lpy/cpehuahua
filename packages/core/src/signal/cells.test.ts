@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CpeCell, CpeSnapshot } from "../types/model";
-import { carrierAggregationLabel, distinctServingCells, isSameCarrierIdentity } from "./cells";
+import { carrierAggregationLabel, distinctServingCells, isSameCarrierIdentity, servingCarrierCompositionLabel } from "./cells";
 
 const pcc: CpeCell = {
   role: "pcc", technology: "NR", band: "100MHz@627264(N78)", arfcn: 627264, pci: 521,
@@ -34,8 +34,11 @@ describe("serving cell presentation", () => {
   });
 
   it("retains a genuinely distinct secondary carrier", () => {
-    const secondary = { ...pcc, role: "scell" as const, band: "40MHz@428910(N1)", arfcn: 428910, pci: 785 };
+    const secondary = { ...pcc, role: "scell" as const, band: "40MHz@428910(N1)", bandwidth: "40MHz", arfcn: 428910, pci: 785 };
     expect(distinctServingCells(snapshot([secondary]))).toHaveLength(2);
     expect(carrierAggregationLabel(snapshot([secondary]))).toBe("100MHz@627264(N78) + 40MHz@428910(N1)");
+    expect(servingCarrierCompositionLabel(snapshot([secondary]))).toBe(
+      "PCC N78 · 100MHz · ARFCN 627264 · PCI 521 + SCC N1 · 40MHz · ARFCN 428910 · PCI 785",
+    );
   });
 });

@@ -16,6 +16,8 @@ export interface NetworkQualityOptions {
 }
 
 export interface NetworkQualityUpdate {
+  /** Timestamp carried by the probe sample that produced this update. */
+  timestamp: string;
   metrics: NetworkMetrics;
   internetOnline: boolean | null;
   changed: boolean;
@@ -118,6 +120,7 @@ export class NetworkQualityTracker {
     }
 
     return {
+      timestamp: sample.timestamp,
       metrics: {
         pingMs: average(successfulLatencies),
         jitterMs: average(jitterSamples),

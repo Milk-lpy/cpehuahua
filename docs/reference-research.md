@@ -25,6 +25,19 @@ cpehuahua。仓库快照以研究时 checkout 的 commit 为准；GitHub 页面�
 可确认对应的公开源码，因此截图只作为功能与信息架构输入，不能据此推断 H168 写入
 协议。以上新增仓库均没有代码被复制到本项目。
 
+## 时间线与主题组件复用评估（2026-09-09）
+
+在细化设备日志和增加白天模式前，额外检查了以下现成方案：
+
+| 项目 | 检查版本 | 许可证与维护 | 依赖、安全与兼容性结论 |
+| --- | --- | --- | --- |
+| [prabhuignoto/react-chrono](https://github.com/prabhuignoto/react-chrono) | HEAD `407ffc367de4576adecb2d0e1dab616d0f3ef60d`；package `3.3.3` | package 声明 MIT；2026-09-09 仍可取得活跃 HEAD，并包含 Vitest、Playwright、ESLint、Snyk 与 size-limit 脚本 | React 19 peer 范围与本项目兼容，但会增加 `classnames`、`dayjs`、`use-debounce`、`xss` 四个运行时依赖，组件自身允许 250 KB 构建预算；本项目只需轻量、只读、移动端纵向事件证据，不值得扩大 bundle 与供应链面，因此不集成 |
+| [pacocoursey/next-themes](https://github.com/pacocoursey/next-themes) | HEAD `a7eeabc39cfb37d74ea3d82eac674d0e1851b1cb`；package `0.4.6` | package 声明 MIT；2026-09-09 可取得仓库 HEAD | 支持 React 19 且 package 未声明运行时依赖，但主要解决 Next.js/SSR 主题注入；当前是 Vite 静态 SPA，只需一个本地存储键、首屏内联属性和 CSS variables，直接使用浏览器能力更小且更容易审计，因此不集成 |
+
+最终复用现有 `EventEngine`、`CpeEvent` 与语义化 `<ol>`，在项目内增加分组采样节点、
+检测窗口和前后快照证据；主题复用现有 CSS token。没有复制上述项目代码，也没有新增
+第三方生产依赖。
+
 ## H168 相关端点证据
 
 ### 上游明确声称在 H168-383 上实测的端点

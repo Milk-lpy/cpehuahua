@@ -1,6 +1,6 @@
 import type { CpeEvent, CpeEventType, CpeEventValue } from "../types/event";
 import type { CpeSnapshot } from "../types/model";
-import { carrierAggregationLabel } from "../signal/cells";
+import { distinctServingCells, servingCarrierCompositionLabel } from "../signal/cells";
 
 export interface EventEngineOptions {
   /** Packet-loss percentage at or above which an alarm is emitted. */
@@ -21,29 +21,51 @@ function timestampMs(timestamp: string): number | null {
 }
 
 function contextFor(snapshot: CpeSnapshot): Record<string, CpeEventValue> {
+  const servingCells = distinctServingCells(snapshot);
   return {
+    source: snapshot.source,
+    cellularOnline: snapshot.connection.cellularOnline,
+    internetOnline: snapshot.connection.internetOnline,
     band: snapshot.radio.band,
+    arfcn: snapshot.radio.arfcn,
+    bandwidth: snapshot.radio.bandwidth,
     pci: snapshot.radio.pci,
     cellId: snapshot.radio.cellId,
+    rrcStatus: snapshot.radio.rrcStatus,
     radioMode: snapshot.connection.radioMode,
     saNsa: snapshot.connection.saNsa,
     plmn: snapshot.connection.plmn,
+    carrierCount: servingCells.length,
+    carriers: servingCarrierCompositionLabel(snapshot),
+    rsrpDbm: snapshot.radio.rsrpDbm,
+    rsrqDb: snapshot.radio.rsrqDb,
+    rssiDbm: snapshot.radio.rssiDbm,
+    sinrDb: snapshot.radio.sinrDb,
+    cqi: snapshot.radio.cqi,
+    mimoRank: snapshot.radio.mimoRank,
+    blerPct: snapshot.radio.blerPct,
+    pingMs: snapshot.network.pingMs,
+    jitterMs: snapshot.network.jitterMs,
+    packetLossPct: snapshot.network.packetLossPct,
   };
 }
 
 function event(
-  snapshot: CpeSnapshot,
+  previous: CpeSnapshot,
+  current: CpeSnapshot,
   type: CpeEventType,
   oldValue: CpeEventValue,
   newValue: CpeEventValue,
   durationMs: number | null = null,
 ): CpeEvent {
   return {
-    timestamp: snapshot.timestamp,
+    timestamp: current.timestamp,
+    previousTimestamp: previous.timestamp,
     type,
     oldValue,
     newValue,
-    context: contextFor(snapshot),
+    context: contextFor(current),
+    previousContext: contextFor(previous),
     durationMs,
   };
 }
@@ -58,7 +80,7 @@ function changedScalar(
   if (oldValue === null || newValue === null || oldValue === newValue) {
     return null;
   }
-  return event(current, type, oldValue, newValue);
+  return event(previous, current, type, oldValue, newValue);
 }
 
 function nrPresence(snapshot: CpeSnapshot): boolean | null {
@@ -81,9 +103,10 @@ function thresholdActive(value: number | null, threshold: number, low: boolean):
 }
 
 function transitionEvent(
+  previousSnapshot: CpeSnapshot,
+  currentSnapshot: CpeSnapshot,
   previous: boolean | null,
   current: boolean | null,
-  snapshot: CpeSnapshot,
   downType: "CELLULAR_DOWN" | "INTERNET_DOWN",
   upType: "CELLULAR_UP" | "INTERNET_UP",
   downAt: number | null,
@@ -96,12 +119,12 @@ function transitionEvent(
   }
 
   if (!current) {
-    return { change: event(snapshot, downType, previous, current), downAt: timestampMs(snapshot.timestamp) };
+    return { change: event(previousSnapshot, currentSnapshot, downType, previous, current), downAt: timestampMs(currentSnapshot.timestamp) };
   }
 
-  const currentAt = timestampMs(snapshot.timestamp);
+  const currentAt = timestampMs(currentSnapshot.timestamp);
   const durationMs = downAt !== null && currentAt !== null ? Math.max(0, currentAt - downAt) : null;
-  return { change: event(snapshot, upType, previous, current, durationMs), downAt: null };
+  return { change: event(previousSnapshot, currentSnapshot, upType, previous, current, durationMs), downAt: null };
 }
 
 function initialDownAt(snapshot: CpeSnapshot, value: boolean | null): number | null {
@@ -119,6 +142,8 @@ export class EventEngine {
   private internetDownAt: number | null = null;
   private highPacketLossActive = false;
   private lowSinrActive = false;
+  private highPacketLossAt: number | null = null;
+  private lowSinrAt: number | null = null;
 
   constructor(options: EventEngineOptions = {}) {
     this.highPacketLossPct = Number.isFinite(options.highPacketLossPct)
@@ -148,6 +173,8 @@ export class EventEngine {
         false,
       ) ?? false;
       this.lowSinrActive = thresholdActive(snapshot.radio.sinrDb, this.lowSinrDb, true) ?? false;
+      this.highPacketLossAt = this.highPacketLossActive ? timestampMs(snapshot.timestamp) : null;
+      this.lowSinrAt = this.lowSinrActive ? timestampMs(snapshot.timestamp) : null;
       return [];
     }
 
@@ -177,30 +204,32 @@ export class EventEngine {
     if (pciChanged) events.push(pciChanged);
     if (bandChanged) events.push(bandChanged);
 
-    const previousCa = carrierAggregationLabel(previous);
-    const currentCa = carrierAggregationLabel(snapshot);
+    const previousCa = servingCarrierCompositionLabel(previous);
+    const currentCa = servingCarrierCompositionLabel(snapshot);
     if (previousCa !== null && currentCa !== null && previousCa !== currentCa) {
-      events.push(event(snapshot, "CA_CHANGED", previousCa, currentCa));
+      events.push(event(previous, snapshot, "CA_CHANGED", previousCa, currentCa));
     }
 
     const previousNr = nrPresence(previous);
     const currentNr = nrPresence(snapshot);
     if (previousNr !== null && currentNr !== null && previousNr !== currentNr) {
-      events.push(event(snapshot, currentNr ? "NR_RESTORED" : "NR_LOST", previousNr, currentNr));
+      events.push(event(previous, snapshot, currentNr ? "NR_RESTORED" : "NR_LOST", previousNr, currentNr));
     }
 
     const cellular = transitionEvent(
+      previous,
+      snapshot,
       previous.connection.cellularOnline,
       snapshot.connection.cellularOnline,
-      snapshot,
       "CELLULAR_DOWN",
       "CELLULAR_UP",
       this.cellularDownAt,
     );
     const internet = transitionEvent(
+      previous,
+      snapshot,
       previous.connection.internetOnline,
       snapshot.connection.internetOnline,
-      snapshot,
       "INTERNET_DOWN",
       "INTERNET_UP",
       this.internetDownAt,
@@ -217,11 +246,20 @@ export class EventEngine {
     );
     if (highPacketLoss === true && !this.highPacketLossActive) {
       events.push(event(
+        previous,
         snapshot,
         "HIGH_PACKET_LOSS",
         previous.network.packetLossPct,
         snapshot.network.packetLossPct,
       ));
+      this.highPacketLossAt = timestampMs(snapshot.timestamp);
+    } else if (highPacketLoss === false && this.highPacketLossActive) {
+      const currentAt = timestampMs(snapshot.timestamp);
+      const durationMs = this.highPacketLossAt !== null && currentAt !== null
+        ? Math.max(0, currentAt - this.highPacketLossAt)
+        : null;
+      events.push(event(previous, snapshot, "PACKET_LOSS_RECOVERED", previous.network.packetLossPct, snapshot.network.packetLossPct, durationMs));
+      this.highPacketLossAt = null;
     }
     if (highPacketLoss !== null) {
       this.highPacketLossActive = highPacketLoss;
@@ -229,7 +267,15 @@ export class EventEngine {
 
     const lowSinr = thresholdActive(snapshot.radio.sinrDb, this.lowSinrDb, true);
     if (lowSinr === true && !this.lowSinrActive) {
-      events.push(event(snapshot, "LOW_SINR", previous.radio.sinrDb, snapshot.radio.sinrDb));
+      events.push(event(previous, snapshot, "LOW_SINR", previous.radio.sinrDb, snapshot.radio.sinrDb));
+      this.lowSinrAt = timestampMs(snapshot.timestamp);
+    } else if (lowSinr === false && this.lowSinrActive) {
+      const currentAt = timestampMs(snapshot.timestamp);
+      const durationMs = this.lowSinrAt !== null && currentAt !== null
+        ? Math.max(0, currentAt - this.lowSinrAt)
+        : null;
+      events.push(event(previous, snapshot, "SINR_RECOVERED", previous.radio.sinrDb, snapshot.radio.sinrDb, durationMs));
+      this.lowSinrAt = null;
     }
     if (lowSinr !== null) {
       this.lowSinrActive = lowSinr;
@@ -250,5 +296,7 @@ export class EventEngine {
     this.internetDownAt = null;
     this.highPacketLossActive = false;
     this.lowSinrActive = false;
+    this.highPacketLossAt = null;
+    this.lowSinrAt = null;
   }
 }

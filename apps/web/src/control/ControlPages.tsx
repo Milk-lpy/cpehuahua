@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CpeCell, CpeSnapshot, SmsSummary } from "@cpehuahua/core";
+import { distinctServingCells, type CpeCell, type CpeSnapshot, type SmsSummary } from "@cpehuahua/core";
 import { loadUiPreferences, saveUiPreferences } from "../live/ui-preferences";
+import type { ColorTheme } from "../live/theme";
 import { H168ControlClient } from "./client";
 import type {
-  DeviceFeatureState,
-  FeatureCapability,
-  MaintenanceControlState,
   ManagedClient,
   NetworkControlState,
   SmsMessage,
-  WlanControlState,
-  WlanSsidState,
 } from "./types";
 
 function errorMessage(cause: unknown, fallback: string): string {
@@ -66,32 +62,6 @@ function Toggle({ checked, disabled = false, label, onChange }: {
   );
 }
 
-function capabilityValue(capability: FeatureCapability | undefined): string {
-  if (!capability) return "正在探测设备能力";
-  if (capability.value === true) return "当前开启 · 只读";
-  if (capability.value === false) return "当前关闭 · 只读";
-  if (capability.value !== null) return `设备返回 ${String(capability.value)}`;
-  if (capability.status === "unsupported") return "当前固件不支持";
-  return "尚未确认";
-}
-
-function CapabilityRow({ title, subtitle, capability }: {
-  title: string;
-  subtitle: string;
-  capability: FeatureCapability | undefined;
-}) {
-  return (
-    <div className="control-row control-row--capability">
-      <div>
-        <strong>{title}</strong>
-        <small>{subtitle}</small>
-        <em>{capabilityValue(capability)}{capability?.reason ? ` · ${capability.reason}` : ""}</em>
-      </div>
-      <Toggle checked={capability?.value === true} disabled label={`${title}不可修改`} />
-    </div>
-  );
-}
-
 function bitmask(bands: readonly number[]): string {
   return bands.reduce((mask, band) => mask | (1n << BigInt(band - 1)), 0n).toString(16).toUpperCase();
 }
@@ -105,9 +75,8 @@ function selectedFromMask(mask: string | null, bands: readonly number[]): number
 const LTE_BANDS: readonly number[] = [1, 3, 5, 7, 8, 20, 28, 38, 40, 41, 42, 43, 71];
 const NR_BANDS: readonly number[] = [1, 3, 5, 7, 8, 20, 28, 38, 40, 41, 71, 77, 78, 79];
 
-export function ControlPage({ client, snapshot }: { client: H168ControlClient; snapshot: CpeSnapshot }) {
+export function ControlPage({ client }: { client: H168ControlClient }) {
   const [state, setState] = useState<NetworkControlState | null>(null);
-  const [features, setFeatures] = useState<DeviceFeatureState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -120,7 +89,6 @@ export function ControlPage({ client, snapshot }: { client: H168ControlClient; s
     setError(null);
     try {
       setState((await client.execute<NetworkControlState>("network.get")).data);
-      setFeatures((await client.execute<DeviceFeatureState>("features.get")).data);
     } catch (cause) {
       setError(errorMessage(cause, "控制状态读取失败"));
     } finally {
@@ -196,14 +164,11 @@ export function ControlPage({ client, snapshot }: { client: H168ControlClient; s
           <div><p className="eyebrow">网络控制</p><h2>连接与制式</h2></div>
           <button className="soft-button" type="button" disabled={busy} onClick={() => void refresh()}>{busy ? "读取中…" : "刷新"}</button>
         </div>
-        <div className="control-grid control-grid--two">
+        <div className="control-grid">
           <div className="control-row">
             <div><strong>移动数据</strong><small>蜂窝网络数据连接</small></div>
             <Toggle checked={state?.mobileData === true} disabled={busy || state?.mobileData === null || !state} label="切换移动数据" onChange={setPendingData} />
           </div>
-          <CapabilityRow title="IPv6" subtitle="IPv6 网络协议" capability={features?.ipv6} />
-          <CapabilityRow title="NFC 一碰连" subtitle="靠近设备快速连接 WLAN" capability={features?.nfc} />
-          <CapabilityRow title="VPN" subtitle="需要设备 VPN 配置" capability={features?.vpn} />
         </div>
         <div className="setting-block">
           <h3>首选方式</h3>
@@ -213,35 +178,8 @@ export function ControlPage({ client, snapshot }: { client: H168ControlClient; s
             ))}
           </div>
         </div>
-        <div className="setting-block">
-          <h3>5G 模式</h3>
-          <div className="segmented segmented--three is-readonly" aria-label="5G 模式只读">
-            {(["SA+NSA", "SA", "NSA"] as const).map((item) => <button key={item} type="button" className={item === snapshot.connection.saNsa ? "is-active" : ""} disabled>{item}</button>)}
-          </div>
-          <p className="panel-note">当前为 {snapshot.connection.saNsa}（networkOption 原始值 {state?.networkOption ?? "未返回"}）。该值在不同固件映射不同，未取得 H168 写入回读前不开放切换。</p>
-        </div>
         {notice && <p className="action-notice">{notice}</p>}
         <ErrorText value={error} />
-      </section>
-
-      <section className="soft-panel">
-        <div className="section-heading"><div><p className="eyebrow">应用加速</p><h2>终端场景加速</h2></div><Toggle checked={features?.appAcceleration.value === true} disabled label="应用加速不可修改" /></div>
-        <div className="inline-selects"><button type="button" disabled>加速场景　游戏</button><button type="button" disabled>选择设备　全部</button></div>
-        <div className="empty-state"><span aria-hidden="true">⌁</span><p>{features?.appAcceleration.reason ?? "正在确认 H168 是否提供应用加速接口。"}</p></div>
-      </section>
-
-      <section className="soft-panel">
-        <div className="section-heading"><div><p className="eyebrow">设备灯效</p><h2>氛围灯</h2></div><Toggle checked={features?.ambientLight.value === true} disabled label="氛围灯不可修改" /></div>
-        <div className="color-options" aria-label="设备灯光颜色只读">
-          {["冰蓝", "白", "紫", "绿", "梅红", "橙"].map((color, index) => <button key={color} type="button" disabled><i className={`color-dot color-dot--${index}`} />{color}</button>)}
-        </div>
-        <p className="panel-note">{features?.ambientLight.reason ?? "正在探测设备灯效接口。"}</p>
-      </section>
-
-      <section className="soft-panel">
-        <div className="section-heading"><div><p className="eyebrow">双链路</p><h2>双宽带 Turbo</h2></div><Toggle checked={features?.dualWanTurbo.value === true} disabled label="双宽带 Turbo 不可修改" /></div>
-        <CapabilityRow title="自动切换" subtitle="网络异常时自动切换链路" capability={features?.automaticFailover} />
-        <div className="mini-stat-grid"><span><small>宽带速率</small><b>WAN 状态待设备返回</b></span><span><small>SIM 卡速率</small><b>{formatRate(snapshot.network.downloadBps)}</b></span></div>
       </section>
 
       <section className="soft-panel">
@@ -344,7 +282,7 @@ export function BandLockPage({ client, snapshot }: { client: H168ControlClient; 
   }
 
   const applyingAutomatic = confirm === "unlock" || (confirm === "apply" && mode === "00");
-  const servingCells = [snapshot.cells.pcc, ...snapshot.cells.scells].filter((cell): cell is CpeCell => cell !== null);
+  const servingCells = distinctServingCells(snapshot);
   const lteNeighbors = snapshot.cells.neighbors.filter((cell) => cell.technology === "LTE");
   const nrNeighbors = snapshot.cells.neighbors.filter((cell) => cell.technology === "NR");
   return (
@@ -396,7 +334,7 @@ function CellSection({ title, eyebrow, cells, serving = false }: { title: string
   return (
     <section className="soft-panel neighbor-panel">
       <div className="section-heading"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div><span className="count-badge">{cells.length}</span></div>
-      {cells.length === 0 ? <div className="empty-state"><span aria-hidden="true">⌁</span><p>当前没有设备返回的{title}。</p></div> : <div className="neighbor-list">{cells.map((cell, index) => {
+      {cells.length === 0 ? <div className="empty-state"><span aria-hidden="true">⌁</span><p>当前没有可用的{title}。</p></div> : <div className="neighbor-list">{cells.map((cell, index) => {
         const role = cell.role === "pcc" ? "PCC" : cell.role === "scell" ? "SCC" : "邻区";
         return <article key={`${cell.role}-${cell.arfcn ?? "x"}-${cell.pci ?? "x"}-${index}`}><div className="neighbor-identity"><strong>{cell.band ?? cell.technology}<em className={cell.role === "scell" ? "is-scc" : ""}>{role}</em></strong><small>{serving ? "服务 ARFCN" : "ARFCN"} {cell.arfcn ?? "—"}</small><small>PCI {cell.pci ?? "—"}{cell.bandwidth ? ` · ${cell.bandwidth}` : ""}</small></div><div className="neighbor-metrics"><CellMetric label="RSRP" value={cell.rsrpDbm} unit="dBm" min={-125} max={-70} /><CellMetric label="RSRQ" value={cell.rsrqDb} unit="dB" min={-25} max={-3} /><CellMetric label="RSSI" value={cell.rssiDbm} unit="dBm" min={-105} max={-45} /><CellMetric label="SINR" value={cell.sinrDb} unit="dB" min={-10} max={30} /></div></article>;
       })}</div>}
@@ -593,86 +531,20 @@ export function ManagedClients({ client, title = "设备列表" }: { client: H16
   );
 }
 
-function primarySsids(state: WlanControlState | null): WlanSsidState[] {
-  if (!state) return [];
-  const order: WlanSsidState["radio"][] = ["2.4GHz", "5GHz_1", "5GHz_2"];
-  return order.flatMap((radio) => state.ssids.find((ssid) => ssid.radio === radio && ssid.guest !== true) ?? []);
-}
-
-function WlanPanel({ client, features }: { client: H168ControlClient; features: DeviceFeatureState | null }) {
-  const [state, setState] = useState<WlanControlState | null>(null);
-  const [openRadio, setOpenRadio] = useState<WlanSsidState["radio"] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function load() {
-    setBusy(true);
-    setError(null);
-    try {
-      const value = (await client.execute<WlanControlState>("wlan.get")).data;
-      setState(value);
-      const active = primarySsids(value).find((ssid) => ssid.enabled)?.radio ?? primarySsids(value)[0]?.radio ?? null;
-      setOpenRadio((current) => current ?? active);
-    } catch (cause) { setError(errorMessage(cause, "WLAN 状态读取失败")); }
-    finally { setBusy(false); }
-  }
-
-  useEffect(() => { void load(); }, [client]);
-  const ssids = primarySsids(state);
-  return (
-    <section className="soft-panel wlan-panel">
-      <div className="section-heading"><div><p className="eyebrow">WLAN 设置</p><h2>三频无线网络</h2></div><button className="soft-button" type="button" disabled={busy} onClick={() => void load()}>{busy ? "读取中…" : "刷新"}</button></div>
-      <div className="wlan-accordions">{ssids.map((ssid) => {
-        const open = openRadio === ssid.radio;
-        return <article key={ssid.index}><button className="accordion-heading" type="button" aria-expanded={open} onClick={() => setOpenRadio(open ? null : ssid.radio)}><strong>{ssid.radio}</strong><span>{open ? "收起" : "展开"}⌄</span></button>{open && <div className="wlan-fields"><div className="control-row"><div><strong>WLAN 开关</strong><small>{ssid.enabled ? "当前开启" : "当前关闭"}</small></div><Toggle checked={ssid.enabled === true} disabled label="WLAN 开关只读" /></div><label>WLAN 名称<input value={ssid.name ?? "设备未返回"} disabled /></label><div className="field-pair"><label>安全模式<input value={ssid.authMode ?? "未返回"} disabled /></label><label>802.11 模式<input value={ssid.wifiMode ?? "未返回"} disabled /></label><label>带宽<input value={ssid.bandwidth ?? "未返回"} disabled /></label><label>信道<input value={ssid.channel ?? "自动 / 未返回"} disabled /></label></div><label>最大接入数<input value={ssid.maxClients ?? "未返回"} disabled /></label><p className="panel-note">{state?.writeReason}</p></div>}</article>;
-      })}</div>
-      {!busy && ssids.length === 0 && <div className="empty-state"><span aria-hidden="true">⌁</span><p>设备没有返回可解析的三频 WLAN 配置。</p></div>}
-      <div className="advanced-wlan"><h3>高级 WLAN</h3><CapabilityRow title="三频优选" subtitle="自动为终端选择 WLAN 频段" capability={features?.triBandOptimization} /><CapabilityRow title="WLAN 频段聚合（MLO）" subtitle="聚合多个频段提升速率与稳定性" capability={features?.mlo} /><CapabilityRow title="WLAN PMF" subtitle="保护管理帧" capability={features?.pmf} /><CapabilityRow title="备用网络" subtitle="为旧设备提供兼容 SSID" capability={features?.backupNetwork} /><div className="field-pair"><label>信号模式<input value="设备未返回" disabled /></label><label>国家/地区<input value="设备未返回" disabled /></label></div></div>
-      <ErrorText value={error} />
-    </section>
-  );
-}
-
-export function SettingsPage({ client, rememberPassword, autoLogin, onRememberPasswordChange, onAutoLoginChange, onLogout }: {
+export function SettingsPage({ client, rememberPassword, autoLogin, theme, onRememberPasswordChange, onAutoLoginChange, onThemeChange, onLogout }: {
   client: H168ControlClient;
   rememberPassword: boolean;
   autoLogin: boolean;
+  theme: ColorTheme;
   onRememberPasswordChange: (value: boolean) => void;
   onAutoLoginChange: (value: boolean) => void;
+  onThemeChange: (theme: ColorTheme) => void;
   onLogout: () => void;
 }) {
-  const [maintenance, setMaintenance] = useState<MaintenanceControlState | null>(null);
-  const [features, setFeatures] = useState<DeviceFeatureState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [pendingUpdate, setPendingUpdate] = useState<boolean | null>(null);
   const [pendingAction, setPendingAction] = useState<"reconnect" | "reboot" | "logout" | null>(null);
-
-  async function refresh() {
-    setBusy(true);
-    setError(null);
-    try {
-      setMaintenance((await client.execute<MaintenanceControlState>("maintenance.get")).data);
-      setFeatures((await client.execute<DeviceFeatureState>("features.get")).data);
-    } catch (cause) { setError(errorMessage(cause, "设置状态读取失败")); }
-    finally { setBusy(false); }
-  }
-
-  useEffect(() => { void refresh(); }, [client]);
-
-  async function setAutoUpdate(enabled: boolean) {
-    setPendingUpdate(null);
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await client.execute<{ verified: boolean }>("maintenance.auto-update", { enabled });
-      if (!result.data?.verified) throw new Error("设备接受了自动升级请求，但回读未确认");
-      setNotice(enabled ? "自动升级已开启并回读确认。" : "自动升级已关闭并回读确认。");
-      await refresh();
-    } catch (cause) { setError(errorMessage(cause, "自动升级设置失败")); setBusy(false); }
-  }
 
   async function runAction(action: "reconnect" | "reboot" | "logout") {
     setPendingAction(null);
@@ -689,13 +561,15 @@ export function SettingsPage({ client, rememberPassword, autoLogin, onRememberPa
 
   return (
     <>
-      <WlanPanel client={client} features={features} />
+      <section className="soft-panel appearance-panel">
+        <div className="section-heading"><div><p className="eyebrow">外观</p><h2>页面主题</h2></div></div>
+        <div className="theme-choice" role="group" aria-label="页面主题">
+          <button type="button" className={theme === "light" ? "is-active" : ""} aria-pressed={theme === "light"} onClick={() => onThemeChange("light")}><span aria-hidden="true">☀</span><strong>白天模式</strong><small>浅色背景</small></button>
+          <button type="button" className={theme === "dark" ? "is-active" : ""} aria-pressed={theme === "dark"} onClick={() => onThemeChange("dark")}><span aria-hidden="true">☾</span><strong>夜间模式</strong><small>深色背景</small></button>
+        </div>
+      </section>
       <section className="soft-panel">
-        <div className="section-heading"><div><p className="eyebrow">设备维护</p><h2>升级、灯光与重启</h2></div><button className="soft-button" type="button" disabled={busy} onClick={() => void refresh()}>刷新</button></div>
-        <div className="control-row"><div><strong>自动升级</strong><small>自动安装运营商推送的重要升级</small><em>{maintenance?.autoUpdateSupported ? "设备配置接口可读取，修改后将回读确认" : "当前固件尚未确认此接口"}</em></div><Toggle checked={maintenance?.autoUpdate === true} disabled={busy || !maintenance?.autoUpdateSupported} label="切换自动升级" onChange={setPendingUpdate} /></div>
-        <div className="control-row control-row--capability"><div><strong>闲时升级</strong><small>设备空闲时自动下载并升级</small><em>H168 没有返回独立的闲时升级字段</em></div><Toggle checked={maintenance?.uiDownload === true} disabled label="闲时升级不可修改" /></div>
-        <CapabilityRow title="信号灯定时关闭" subtitle="夜间关闭设备信号灯" capability={features?.scheduledLedOff ?? maintenance?.ledSchedule} />
-        <CapabilityRow title="定时重启" subtitle="按周期在指定时间段重启" capability={features?.scheduledRestart ?? maintenance?.timedRestart} />
+        <div className="section-heading"><div><p className="eyebrow">设备维护</p><h2>即时操作</h2></div></div>
         <div className="maintenance-actions"><button type="button" className="primary-button" disabled={busy} onClick={() => setPendingAction("reconnect")}>重启网络</button><button type="button" className="warning-button" disabled={busy} onClick={() => setPendingAction("reboot")}>重启设备</button></div>
         {notice && <p className="action-notice">{notice}</p>}
         <ErrorText value={error} />
@@ -705,11 +579,9 @@ export function SettingsPage({ client, rememberPassword, autoLogin, onRememberPa
         <div className="section-heading"><div><p className="eyebrow">账号与安全</p><h2>登录设置</h2></div></div>
         <div className="control-row"><div><strong>保存密码</strong><small>下次打开可使用当前管理密码</small></div><Toggle checked={rememberPassword} label="保存密码" onChange={onRememberPasswordChange} /></div>
         <div className="control-row"><div><strong>自动登录</strong><small>打开网页后自动进入实时首页</small></div><Toggle checked={autoLogin} disabled={!rememberPassword} label="自动登录" onChange={onAutoLoginChange} /></div>
-        <div className="password-placeholder"><label>修改管理员密码<input value="当前版本暂不开放：H168 要求加密回写" disabled /></label><button type="button" className="soft-button" disabled>下一步</button><button type="button" className="soft-button" disabled>修改密码</button></div>
         <button type="button" className="logout-button" onClick={() => setPendingAction("logout")}>退出登录</button>
       </section>
       <p className="app-version">CPE Huahua Web · 0.1.0</p>
-      <ConfirmDialog open={pendingUpdate !== null} title={pendingUpdate ? "开启自动升级？" : "关闭自动升级？"} detail="仅修改设备自动升级开关，并保留当前 ui_download 值；完成后会立即回读。" confirmLabel="确认修改" onCancel={() => setPendingUpdate(null)} onConfirm={() => void setAutoUpdate(Boolean(pendingUpdate))} />
       <ConfirmDialog open={pendingAction !== null} title={pendingAction === "logout" ? "退出登录？" : pendingAction === "reboot" ? "确认重启设备？" : "确认重启网络？"} detail={pendingAction === "logout" ? "会停止实时抓取，并清除 Surge Bridge 中保存的密码和会话。" : pendingAction === "reboot" ? "H168、Wi-Fi 和实时监控会暂时断开。" : "蜂窝连接会短暂中断，局域网通常保持在线。"} confirmLabel={pendingAction === "logout" ? "退出登录" : "确认执行"} danger onCancel={() => setPendingAction(null)} onConfirm={() => pendingAction && void runAction(pendingAction)} />
     </>
   );

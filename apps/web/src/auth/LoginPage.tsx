@@ -1,16 +1,20 @@
 import { useState, type FormEvent } from "react";
+import type { ColorTheme } from "../live/theme";
+import { ThemeToggle } from "../ui/ThemeToggle";
 
 interface LoginPageProps {
   busy: boolean;
   error: string | null;
   rememberPassword: boolean;
   autoLogin: boolean;
+  theme: ColorTheme;
   onSubmit: (password: string) => void;
   onRememberPasswordChange: (value: boolean) => void;
   onAutoLoginChange: (value: boolean) => void;
+  onThemeChange: (theme: ColorTheme) => void;
 }
 
-export function LoginPage({ busy, error, rememberPassword, autoLogin, onSubmit, onRememberPasswordChange, onAutoLoginChange }: LoginPageProps) {
+export function LoginPage({ busy, error, rememberPassword, autoLogin, theme, onSubmit, onRememberPasswordChange, onAutoLoginChange, onThemeChange }: LoginPageProps) {
   const [password, setPassword] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -22,7 +26,7 @@ export function LoginPage({ busy, error, rememberPassword, autoLogin, onSubmit, 
   return (
     <main className="app-shell login-shell">
       <section className="login-card" aria-labelledby="login-title">
-        <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><i>H168-383</i></div>
+        <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><i>H168-383</i><ThemeToggle theme={theme} onChange={onThemeChange} /></div>
         <p className="eyebrow">Local device access</p>
         <h1 id="login-title">登录 H168</h1>
         <p className="lede">输入设备管理密码后进入概览。认证成功会立即开始本地实时抓取。</p>

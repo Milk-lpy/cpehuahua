@@ -10,12 +10,14 @@ import { BridgeRequestGate } from "./live/bridge-request-gate";
 import { DevicePollingSession } from "./live/device-session";
 import { SurgeNetworkProbeClient } from "./live/network-client";
 import { loadNetworkProbeUrl } from "./live/network-settings";
+import { applyTheme, loadTheme, saveTheme, type ColorTheme } from "./live/theme";
 import {
   clearPersistedLiveReport,
   loadPersistedLiveReport,
   savePersistedLiveReport,
 } from "./live/storage";
 import type { AppView } from "./ui/BottomNav";
+import { ThemeToggle } from "./ui/ThemeToggle";
 
 const DEFAULT_BRIDGE_URL = "https://cpe-bridge.example.com/api/probe";
 const NETWORK_PROBE_INTERVAL_MS = 1_000;
@@ -57,11 +59,11 @@ function liveEndpointError(result: EndpointProbeResult): string {
   return `${result.endpoint.label}读取失败：${detail}`;
 }
 
-function LoadingScreen() {
+function LoadingScreen({ theme, onThemeChange }: { theme: ColorTheme; onThemeChange: (theme: ColorTheme) => void }) {
   return (
     <main className="app-shell login-shell" aria-live="polite">
       <section className="login-card login-card--loading">
-        <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><i>H168-383</i></div>
+        <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><i>H168-383</i><ThemeToggle theme={theme} onChange={onThemeChange} /></div>
         <p className="eyebrow">Secure session</p>
         <h1>正在自动登录</h1>
         <p className="lede">正在通过本地 Surge Bridge 恢复 H168 会话。</p>
@@ -82,6 +84,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [rememberPassword, setRememberPassword] = useState(authPreferences.rememberPassword);
   const [autoLogin, setAutoLogin] = useState(authPreferences.autoLogin);
+  const [theme, setTheme] = useState<ColorTheme>(() => loadTheme());
   const [liveMonitoring, setLiveMonitoring] = useState(false);
   const [liveErrors, setLiveErrors] = useState<Record<string, string>>({});
   const liveSessionRef = useRef<DevicePollingSession | null>(null);
@@ -229,6 +232,12 @@ function App() {
     setRestoredFromStorage(false);
   }
 
+  function updateTheme(value: ColorTheme) {
+    setTheme(value);
+    saveTheme(value);
+    applyTheme(value);
+  }
+
   useEffect(() => {
     if (!rememberPassword || !autoLogin || autoLoginAttemptedRef.current) return;
     autoLoginAttemptedRef.current = true;
@@ -239,7 +248,7 @@ function App() {
     liveSessionRef.current?.stop();
   }, []);
 
-  if (authStatus === "checking") return <LoadingScreen />;
+  if (authStatus === "checking") return <LoadingScreen theme={theme} onThemeChange={updateTheme} />;
   if (authStatus !== "authenticated") {
     return (
       <LoginPage
@@ -247,12 +256,14 @@ function App() {
         error={authError}
         rememberPassword={rememberPassword}
         autoLogin={autoLogin}
+        theme={theme}
         onSubmit={(value) => {
           saveAuthPreferences({ rememberPassword, autoLogin });
           void authenticateAndStart(value);
         }}
         onRememberPasswordChange={updateRememberPassword}
         onAutoLoginChange={updateAutoLogin}
+        onThemeChange={updateTheme}
       />
     );
   }
@@ -274,8 +285,10 @@ function App() {
       controlClient={controlClient}
       rememberPassword={rememberPassword}
       autoLogin={autoLogin}
+      theme={theme}
       onRememberPasswordChange={updateRememberPassword}
       onAutoLoginChange={updateAutoLogin}
+      onThemeChange={updateTheme}
       onLogout={() => void logout()}
     />
   );

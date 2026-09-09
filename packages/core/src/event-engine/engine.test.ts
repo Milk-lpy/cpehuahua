@@ -172,8 +172,11 @@ describe("EventEngine", () => {
       "CA_CHANGED",
       "NR_LOST",
     ]);
-    expect(changed.find((item) => item.type === "CA_CHANGED")?.oldValue).toBe("n78 + n78");
-    expect(changed.find((item) => item.type === "CA_CHANGED")?.newValue).toBe("B5");
+    expect(changed.find((item) => item.type === "CA_CHANGED")?.oldValue).toBe("PCC N78 · PCI 187 + SCC N78 · PCI 223");
+    expect(changed.find((item) => item.type === "CA_CHANGED")?.newValue).toBe("PCC B5 · PCI 242");
+    expect(changed[0]?.previousTimestamp).toBe("2026-09-05T00:00:00.000Z");
+    expect(changed[0]?.previousContext?.cellId).toBe("cell-a");
+    expect(changed[0]?.context.cellId).toBe("cell-b");
 
     const restored = engine.ingest(snapshot(2, {
       cellId: "cell-b",
@@ -208,6 +211,7 @@ describe("EventEngine", () => {
 
     expect(first.map((item) => item.type)).toEqual(["HIGH_PACKET_LOSS", "LOW_SINR"]);
     expect(repeated).toEqual([]);
-    expect(recovered).toEqual([]);
+    expect(recovered.map((item) => item.type)).toEqual(["PACKET_LOSS_RECOVERED", "SINR_RECOVERED"]);
+    expect(recovered.every((item) => item.durationMs === 2_000)).toBe(true);
   });
 });

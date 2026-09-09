@@ -1,7 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { applyTheme, loadTheme } from "./live/theme";
 import "./styles.css";
+
+applyTheme(loadTheme());
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   let refreshing = false;

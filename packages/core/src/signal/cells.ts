@@ -29,6 +29,22 @@ export function carrierAggregationLabel(snapshot: CpeSnapshot): string | null {
   return cells.map((cell) => cell.band).join(" + ");
 }
 
+/** Stable, human-readable serving-carrier identities for timeline comparisons. */
+export function servingCarrierCompositionLabel(snapshot: CpeSnapshot): string | null {
+  const cells = distinctServingCells(snapshot);
+  if (cells.length === 0) return null;
+  return cells.map((cell) => {
+    const role = cell.role === "pcc" ? "PCC" : "SCC";
+    const identity = [
+      normalizedBand(cell.band) ?? cell.technology,
+      cell.bandwidth,
+      cell.arfcn === null ? null : `ARFCN ${cell.arfcn}`,
+      cell.pci === null ? null : `PCI ${cell.pci}`,
+    ].filter((value): value is string => value !== null);
+    return `${role} ${identity.join(" · ")}`;
+  }).join(" + ");
+}
+
 export function isMirroredSecondaryCell(snapshot: CpeSnapshot, cell: CpeCell): boolean {
   return snapshot.cells.pcc !== null && isSameCarrierIdentity(snapshot.cells.pcc, cell);
 }

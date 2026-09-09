@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
-import type { CpeSnapshot } from "@cpehuahua/core";
-import { aggregationLabel, chartPoints, eventContextEntries, eventGroupLabel, eventTone, eventToneLabel, formatDuration, formatMetric } from "./view-model";
+import type { CpeEvent, CpeSnapshot } from "@cpehuahua/core";
+import {
+  aggregationLabel,
+  chartPoints,
+  eventContextEntries,
+  eventDetail,
+  eventGroupLabel,
+  eventObservationWindow,
+  eventTone,
+  eventToneLabel,
+  eventTransition,
+  formatDuration,
+  formatMetric,
+  groupTimelineEvents,
+  samplingIntervalMs,
+} from "./view-model";
 
 function snapshot(second: number, sinrDb: number | null): CpeSnapshot {
   const cell = {
@@ -116,6 +130,8 @@ describe("dashboard view model", () => {
   it("assigns event tones without changing event semantics", () => {
     expect(eventTone("INTERNET_DOWN")).toBe("danger");
     expect(eventTone("INTERNET_UP")).toBe("success");
+    expect(eventTone("PACKET_LOSS_RECOVERED")).toBe("success");
+    expect(eventTone("SINR_RECOVERED")).toBe("success");
     expect(eventTone("LOW_SINR")).toBe("warning");
     expect(eventTone("BAND_CHANGED")).toBe("info");
   });
@@ -136,14 +152,58 @@ describe("dashboard view model", () => {
       },
       durationMs: null,
     });
-    expect(entries).toEqual([
-      { label: "网络", value: "5G / SA" },
+    expect(entries).toEqual(expect.arrayContaining([
+      { label: "网络制式", value: "5G / SA" },
+      { label: "蜂窝连接", value: "未验证" },
+      { label: "Internet", value: "未验证" },
       { label: "PLMN", value: "46011" },
       { label: "频段", value: "N41" },
       { label: "PCI", value: "160" },
       { label: "Cell ID", value: "cell-1" },
-    ]);
+    ]));
     expect(eventGroupLabel("BAND_CHANGED")).toBe("无线参数");
     expect(eventToneLabel("BAND_CHANGED")).toBe("记录");
+  });
+
+  it("expresses event time as an observation window instead of a fabricated exact switch time", () => {
+    const item: CpeEvent = {
+      timestamp: "2026-09-05T00:00:02.250Z",
+      previousTimestamp: "2026-09-05T00:00:01.000Z",
+      type: "SINR_RECOVERED",
+      oldValue: 3,
+      newValue: 9,
+      context: { source: "live", sinrDb: 9 },
+      previousContext: { source: "live", sinrDb: 3 },
+      durationMs: 5_000,
+    };
+    expect(eventObservationWindow(item).durationMs).toBe(1_250);
+    expect(eventTransition(item)).toEqual({ before: "3 dB", after: "9 dB" });
+    expect(eventDetail(item)).toContain("异常持续 5.0 秒");
+    expect(eventContextEntries(item, "previous")).toContainEqual({ label: "SINR", value: "3 dB" });
+  });
+
+  it("groups simultaneous changes into one newest-first timeline observation", () => {
+    const base: CpeEvent = {
+      timestamp: "2026-09-05T00:00:02.000Z",
+      previousTimestamp: "2026-09-05T00:00:01.000Z",
+      type: "BAND_CHANGED",
+      oldValue: "N78",
+      newValue: "N41",
+      context: {},
+      previousContext: {},
+      durationMs: null,
+    };
+    const groups = groupTimelineEvents([
+      base,
+      { ...base, type: "PCI_CHANGED", oldValue: 1, newValue: 2 },
+      { ...base, timestamp: "2026-09-05T00:00:03.000Z", previousTimestamp: base.timestamp, type: "LOW_SINR", oldValue: 9, newValue: 3 },
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.timestamp).toBe("2026-09-05T00:00:03.000Z");
+    expect(groups[1]?.events).toHaveLength(2);
+  });
+
+  it("uses the median of recent positive snapshot intervals", () => {
+    expect(samplingIntervalMs([snapshot(0, 10), snapshot(1, 10), snapshot(4, 10)])).toBe(2_000);
   });
 });
