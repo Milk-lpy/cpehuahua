@@ -2,7 +2,7 @@ import type { CpeSnapshot, CapabilityMatrix } from "./model";
 import type { ParsedHuaweiXml } from "./xml";
 import type { EndpointProbeResult, ProbeEndpoint } from "./probe";
 
-export type AdapterId = "h168" | "h155";
+export type AdapterId = "h168" | "h155" | "e6888";
 
 export interface AdapterIdentification {
   matched: boolean;

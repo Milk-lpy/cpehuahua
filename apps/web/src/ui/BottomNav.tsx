@@ -1,3 +1,5 @@
+import type { AdapterId } from "@cpehuahua/core";
+
 export type AppView = "overview" | "control" | "cells" | "parameters" | "messages" | "settings" | "logs";
 
 interface IconProps { name: AppView }
@@ -26,11 +28,14 @@ const ITEMS: ReadonlyArray<{ id: AppView; label: string }> = [
   { id: "settings", label: "设置" },
 ];
 
-export function BottomNav({ active, onNavigate }: { active: AppView; onNavigate: (view: AppView) => void }) {
+export function BottomNav({ active, onNavigate, adapterId = "h168" }: { active: AppView; onNavigate: (view: AppView) => void; adapterId?: AdapterId }) {
   const activeItem = active === "logs" ? "parameters" : active;
+  const items = adapterId === "e6888"
+    ? ITEMS.filter((item) => !["control", "cells", "messages"].includes(item.id))
+    : ITEMS;
   return (
     <nav className="bottom-nav" aria-label="主要功能">
-      {ITEMS.map((item) => (
+      {items.map((item) => (
         <button
           key={item.id}
           type="button"

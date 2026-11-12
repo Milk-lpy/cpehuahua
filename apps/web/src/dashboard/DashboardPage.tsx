@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { distinctServingCells, type CpeCell, type CpeEvent, type CpeSnapshot } from "@cpehuahua/core";
+import { distinctServingCells, type AdapterId, type CpeCell, type CpeEvent, type CpeSnapshot } from "@cpehuahua/core";
 import { BottomNav, type AppView } from "../ui/BottomNav";
 import { BandLockPage, ConfirmDialog, ControlPage, ManagedClients, MessagesPage, SettingsPage } from "../control/ControlPages";
 import { H168ControlClient } from "../control/client";
@@ -31,6 +31,7 @@ import {
 } from "./view-model";
 
 interface DashboardPageProps {
+  adapterId: AdapterId;
   activeView: AppView;
   snapshot: CpeSnapshot | null;
   history: readonly CpeSnapshot[];
@@ -136,7 +137,7 @@ function inputNumber(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 1_000_000 ? parsed : null;
 }
 
-function TrafficPanel({ snapshot, history, client }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; client: H168ControlClient }) {
+function TrafficPanel({ snapshot, history, client, readOnly }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; client: H168ControlClient; readOnly: boolean }) {
   const [preferences, setPreferences] = useState<UiPreferences>(() => loadUiPreferences());
   const [editing, setEditing] = useState(false);
   const [pendingClear, setPendingClear] = useState(false);
@@ -170,23 +171,24 @@ function TrafficPanel({ snapshot, history, client }: { snapshot: CpeSnapshot; hi
     }
   }
 
-  return <><section className="soft-panel speed-panel"><SectionTitle eyebrow="实时速率" title="" badge="1 秒刷新" /><div className="speed-grid speed-grid--spark"><div><b className="rate-icon rate-icon--down">↓</b><span>下载<strong>{formatRate(snapshot.network.downloadBps)}</strong></span><Sparkline history={history} field="downloadBps" /></div><div><b className="rate-icon rate-icon--up">↑</b><span>上传<strong>{formatRate(snapshot.network.uploadBps)}</strong></span><Sparkline history={history} field="uploadBps" /></div></div></section>
+  return <><section className="soft-panel speed-panel"><SectionTitle eyebrow="实时速率" title="" badge="实时刷新" /><div className="speed-grid speed-grid--spark"><div><b className="rate-icon rate-icon--down">↓</b><span>下载<strong>{formatRate(snapshot.network.downloadBps)}</strong></span><Sparkline history={history} field="downloadBps" /></div><div><b className="rate-icon rate-icon--up">↑</b><span>上传<strong>{formatRate(snapshot.network.uploadBps)}</strong></span><Sparkline history={history} field="uploadBps" /></div></div></section>
     <section className="soft-panel contract-panel"><div className="section-heading"><div><p className="eyebrow">签约速率</p><h2>宽带套餐</h2></div><button type="button" className="icon-button" aria-label="编辑签约速率" onClick={() => setEditing((value) => !value)}>↻</button></div><div className="contract-grid"><label>下行<input inputMode="decimal" placeholder="--" value={numericInput(preferences.contractedDownloadMbps)} disabled={!editing} onChange={(event) => update({ contractedDownloadMbps: inputNumber(event.target.value) })} /><small>Mbps</small></label><label>上行<input inputMode="decimal" placeholder="--" value={numericInput(preferences.contractedUploadMbps)} disabled={!editing} onChange={(event) => update({ contractedUploadMbps: inputNumber(event.target.value) })} /><small>Mbps</small></label></div><p className="panel-note">签约速率仅保存在当前浏览器，用于和实时速率对照。</p></section>
-    <section className="soft-panel traffic-panel"><div className="section-heading"><div><p className="eyebrow">流量统计</p><h2>套餐与用量</h2></div><span className="muted-label">上次清空 {snapshot.network.monthLastClearDate ?? "—"}</span></div><div className="plan-settings"><label><span><strong>日套餐设置</strong><small>{preferences.dayLimitGb ? `${preferences.dayLimitGb} GB` : "未设置额度"}</small></span><input type="checkbox" checked={preferences.dayPlanEnabled} onChange={(event) => update({ dayPlanEnabled: event.target.checked })} /></label>{preferences.dayPlanEnabled && <label className="limit-input">每日额度<input inputMode="decimal" value={numericInput(preferences.dayLimitGb)} onChange={(event) => update({ dayLimitGb: inputNumber(event.target.value) })} /><span>GB</span></label>}<label><span><strong>月套餐设置</strong><small>{preferences.monthLimitGb ? `${preferences.monthLimitGb} GB` : "未设置额度"}</small></span><input type="checkbox" checked={preferences.monthPlanEnabled} onChange={(event) => update({ monthPlanEnabled: event.target.checked })} /></label>{preferences.monthPlanEnabled && <label className="limit-input">每月额度<input inputMode="decimal" value={numericInput(preferences.monthLimitGb)} onChange={(event) => update({ monthLimitGb: inputNumber(event.target.value) })} /><span>GB</span></label>}</div><div className="usage-table"><div><b>类型</b><b>当前</b><b>日</b><b>月</b></div><div><span>已用</span><strong>{formatBytes(combinedBytes(snapshot.network.currentDownloadBytes, snapshot.network.currentUploadBytes))}</strong><strong>{formatBytes(snapshot.network.dayUsedBytes)}</strong><strong>{formatBytes(combinedBytes(snapshot.network.monthDownloadBytes, snapshot.network.monthUploadBytes))}</strong></div><div><span>时间</span><strong>{formatUptime(snapshot.network.currentConnectSeconds)}</strong><strong>{formatUptime(snapshot.network.dayDurationSeconds)}</strong><strong>{formatUptime(snapshot.network.monthDurationSeconds)}</strong></div></div><button className="primary-button clear-traffic-button" type="button" disabled={busy} onClick={() => setPendingClear(true)}>{busy ? "正在清零…" : "清空流量统计"}</button>{notice && <p className="action-notice">{notice}</p>}{error && <p className="action-error" role="alert">{error}</p>}</section>
-    <ConfirmDialog open={pendingClear} title="清空设备流量统计？" detail="会清除 H168 中的累计流量和统计周期，操作不可撤销；不会删除短信或终端设置。" confirmLabel="确认清空" danger onCancel={() => setPendingClear(false)} onConfirm={() => void clearTraffic()} /></>;
+    <section className="soft-panel traffic-panel"><div className="section-heading"><div><p className="eyebrow">流量统计</p><h2>套餐与用量</h2></div><span className="muted-label">上次清空 {snapshot.network.monthLastClearDate ?? "—"}</span></div><div className="plan-settings"><label><span><strong>日套餐设置</strong><small>{preferences.dayLimitGb ? `${preferences.dayLimitGb} GB` : "未设置额度"}</small></span><input type="checkbox" checked={preferences.dayPlanEnabled} onChange={(event) => update({ dayPlanEnabled: event.target.checked })} /></label>{preferences.dayPlanEnabled && <label className="limit-input">每日额度<input inputMode="decimal" value={numericInput(preferences.dayLimitGb)} onChange={(event) => update({ dayLimitGb: inputNumber(event.target.value) })} /><span>GB</span></label>}<label><span><strong>月套餐设置</strong><small>{preferences.monthLimitGb ? `${preferences.monthLimitGb} GB` : "未设置额度"}</small></span><input type="checkbox" checked={preferences.monthPlanEnabled} onChange={(event) => update({ monthPlanEnabled: event.target.checked })} /></label>{preferences.monthPlanEnabled && <label className="limit-input">每月额度<input inputMode="decimal" value={numericInput(preferences.monthLimitGb)} onChange={(event) => update({ monthLimitGb: inputNumber(event.target.value) })} /><span>GB</span></label>}</div><div className="usage-table"><div><b>类型</b><b>当前</b><b>日</b><b>月</b></div><div><span>已用</span><strong>{formatBytes(combinedBytes(snapshot.network.currentDownloadBytes, snapshot.network.currentUploadBytes))}</strong><strong>{formatBytes(snapshot.network.dayUsedBytes)}</strong><strong>{formatBytes(combinedBytes(snapshot.network.monthDownloadBytes, snapshot.network.monthUploadBytes))}</strong></div><div><span>时间</span><strong>{formatUptime(snapshot.network.currentConnectSeconds)}</strong><strong>{formatUptime(snapshot.network.dayDurationSeconds)}</strong><strong>{formatUptime(snapshot.network.monthDurationSeconds)}</strong></div></div>{!readOnly && <button className="primary-button clear-traffic-button" type="button" disabled={busy} onClick={() => setPendingClear(true)}>{busy ? "正在清零…" : "清空流量统计"}</button>}{notice && <p className="action-notice">{notice}</p>}{error && <p className="action-error" role="alert">{error}</p>}</section>
+    {!readOnly && <ConfirmDialog open={pendingClear} title="清空设备流量统计？" detail="会清除 H168 中的累计流量和统计周期，操作不可撤销；不会删除短信或终端设置。" confirmLabel="确认清空" danger onCancel={() => setPendingClear(false)} onConfirm={() => void clearTraffic()} />}</>;
 }
 
-function Overview({ snapshot, history, events, networkProbeConfigured, onNavigate, controlClient }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; events: readonly CpeEvent[]; networkProbeConfigured: boolean; onNavigate: (view: AppView) => void; controlClient: H168ControlClient }) {
+function Overview({ snapshot, history, events, networkProbeConfigured, onNavigate, controlClient, readOnly }: { snapshot: CpeSnapshot; history: readonly CpeSnapshot[]; events: readonly CpeEvent[]; networkProbeConfigured: boolean; onNavigate: (view: AppView) => void; controlClient: H168ControlClient; readOnly: boolean }) {
   const [metric, setMetric] = useState<DashboardMetricId>("rsrpDbm");
   const servingCells = distinctServingCells(snapshot);
   const pcc = servingCells.find((cell) => cell.role === "pcc") ?? null;
   const secondaryCells = servingCells.filter((cell) => cell.role === "scell");
   return <>
-    <section className="hero-card hero-card--focus"><div className="hero-title"><div><h1>{snapshot.connection.operatorName ?? "蜂窝网络"} {snapshot.connection.radioMode === "5G" ? "5G-A" : snapshot.connection.radioMode}</h1><p>{snapshot.device.model ?? "H168"} · {snapshot.connection.saNsa} · {new Date(snapshot.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</p></div><span className={snapshot.connection.cellularOnline ? "is-online" : ""}>{statusText(snapshot.connection.cellularOnline)}</span></div><div className="signal-stage"><SignalRing value={snapshot.radio.rsrpDbm} /><p>当前信号强度 · 数值越接近 0 越好</p></div></section>
+    <section className="hero-card hero-card--focus"><div className="hero-title"><div><h1>{snapshot.connection.operatorName ?? "蜂窝网络"} {snapshot.connection.radioMode}</h1><p>{snapshot.device.model ?? "H168"} · {snapshot.connection.saNsa} · {new Date(snapshot.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}</p></div><span className={snapshot.connection.cellularOnline ? "is-online" : ""}>{statusText(snapshot.connection.cellularOnline)}</span></div><div className="signal-stage"><SignalRing value={snapshot.radio.rsrpDbm} /><p>当前信号强度 · 数值越接近 0 越好</p></div></section>
+    {snapshot.device.model === "E6888-982" && <section className="soft-panel"><SectionTitle eyebrow="Mobile WiFi" title="设备状态" /><DetailList items={[["电量", snapshot.device.batteryPercent ?? null, "%"], ["USB 连接", snapshot.device.usbConnected == null ? null : snapshot.device.usbConnected ? "已连接" : "未连接"]]} /></section>}
     <section className="soft-panel carrier-panel"><SectionTitle eyebrow="信号详情" title="服务载波" badge={servingCells.length} /><div className="carrier-list">{pcc ? <CarrierCard cell={pcc} role="PCC" /> : <Empty text="当前没有可用的主载波数据。" />}{secondaryCells.map((cell, index) => <CarrierCard key={`scc-${cell.arfcn ?? index}-${cell.pci ?? index}`} cell={cell} role="SCC" />)}</div></section>
-    <TrafficPanel snapshot={snapshot} history={history} client={controlClient} />
-    <ManagedClients client={controlClient} />
-    <section className="soft-panel telemetry-panel"><SectionTitle eyebrow="实时曲线（最近 60 秒）" title="" /><div className="metric-tabs">{DASHBOARD_METRICS.slice(0, 4).map((item) => <button key={item.id} type="button" className={metric === item.id ? "is-active" : ""} onClick={() => setMetric(item.id)}>{item.label}</button>)}</div><LineChart history={history} metric={metric} /></section>
+    <TrafficPanel snapshot={snapshot} history={history} client={controlClient} readOnly={readOnly} />
+    {!readOnly && <ManagedClients client={controlClient} />}
+    <section className="soft-panel telemetry-panel"><SectionTitle eyebrow="实时曲线（最近采样）" title="" /><div className="metric-tabs">{DASHBOARD_METRICS.slice(0, 4).map((item) => <button key={item.id} type="button" className={metric === item.id ? "is-active" : ""} onClick={() => setMetric(item.id)}>{item.label}</button>)}</div><LineChart history={history} metric={metric} /></section>
     <section className="soft-panel log-preview-panel"><div className="section-heading"><div><p className="eyebrow">本地实时记录</p><h2>设备日志</h2></div><div className="section-heading__actions"><span className="count-badge">{events.length}</span><button className="soft-button" type="button" onClick={() => onNavigate("logs")}>全部日志</button></div></div>{events.length === 0 ? <Empty text="保持实时监控，信号和小区变化会记录在这里。" /> : <EventList events={events.slice(-3)} />}{!networkProbeConfigured && <p className="panel-note">Internet 用户路径探测尚未配置，状态保持未验证。</p>}</section>
   </>;
 }
@@ -302,19 +304,21 @@ function Empty({ text }: { text: string }) { return <div className="empty-state"
 
 export function DashboardPage(props: DashboardPageProps) {
   const { snapshot, activeView, liveMonitoring, liveError, cached, onNavigate } = props;
-  if (snapshot === null) return <main className="app-shell"><header className="app-header"><div className="brand-line"><span className="brand-paw">●</span><strong>CPE 花花</strong><i>已登录</i></div><h1>正在连接 H168</h1><p className="lede">认证已通过，正在读取第一份实时快照。</p><button className="primary-button" type="button" onClick={props.onRetryLive} disabled={liveMonitoring}>{liveMonitoring ? "实时抓取中…" : "重新连接"}</button></header>{liveError && <div className="error-banner" role="alert">{liveError}</div>}<BottomNav active={activeView} onNavigate={onNavigate} /></main>;
+  const readOnly = props.adapterId !== "h168";
+  const modelName = props.adapterId === "e6888" ? "E6888-982" : "H168-383";
+  if (snapshot === null) return <main className="app-shell"><header className="app-header"><div className="brand-line"><span className="brand-paw">●</span><strong>CPE 花花</strong><i>已登录</i></div><h1>正在连接 {modelName}</h1><p className="lede">认证已通过，正在读取第一份实时快照。</p><button className="primary-button" type="button" onClick={props.onRetryLive} disabled={liveMonitoring}>{liveMonitoring ? "实时抓取中…" : "重新连接"}</button></header>{liveError && <div className="error-banner" role="alert">{liveError}</div>}<BottomNav active={activeView} onNavigate={onNavigate} adapterId={props.adapterId} /></main>;
   return <main className="app-shell dashboard-shell">
     <PageHeader liveMonitoring={liveMonitoring} theme={props.theme} onToggleLive={props.onToggleLive} onThemeChange={props.onThemeChange} />
     {liveError && <div className="error-banner dashboard-error" role="alert">{liveError}</div>}
     {snapshot.source !== "live" && <div className="evidence-banner">当前为 {snapshot.source === "fixture" ? "fixture 参考" : "未知来源"}，不代表实机验证。</div>}
     {cached && <div className="evidence-banner evidence-banner--cached">正在显示浏览器保存的最近快照，实时连接建立后会更新。</div>}
-    {activeView === "overview" && <Overview snapshot={snapshot} history={props.history} events={props.events} networkProbeConfigured={props.networkProbeConfigured} onNavigate={onNavigate} controlClient={props.controlClient} />}
+    {activeView === "overview" && <Overview snapshot={snapshot} history={props.history} events={props.events} networkProbeConfigured={props.networkProbeConfigured} onNavigate={onNavigate} controlClient={props.controlClient} readOnly={readOnly} />}
     {activeView === "logs" && <DeviceLogsPage events={props.events} history={props.history} snapshot={snapshot} networkProbeConfigured={props.networkProbeConfigured} />}
-    {activeView === "control" && <ControlPage client={props.controlClient} />}
-    {activeView === "cells" && <BandLockPage client={props.controlClient} snapshot={snapshot} />}
+    {activeView === "control" && !readOnly && <ControlPage client={props.controlClient} />}
+    {activeView === "cells" && !readOnly && <BandLockPage client={props.controlClient} snapshot={snapshot} />}
     {activeView === "parameters" && <ParametersPage snapshot={snapshot} events={props.events} cached={cached} onClearCache={props.onClearCache} onNavigate={onNavigate} />}
-    {activeView === "messages" && <MessagesPage client={props.controlClient} summary={snapshot.messaging} />}
-    {activeView === "settings" && <SettingsPage client={props.controlClient} rememberPassword={props.rememberPassword} autoLogin={props.autoLogin} theme={props.theme} onRememberPasswordChange={props.onRememberPasswordChange} onAutoLoginChange={props.onAutoLoginChange} onThemeChange={props.onThemeChange} onLogout={props.onLogout} />}
-    <BottomNav active={activeView} onNavigate={onNavigate} />
+    {activeView === "messages" && !readOnly && <MessagesPage client={props.controlClient} summary={snapshot.messaging} />}
+    {activeView === "settings" && <SettingsPage client={props.controlClient} rememberPassword={props.rememberPassword} autoLogin={props.autoLogin} theme={props.theme} onRememberPasswordChange={props.onRememberPasswordChange} onAutoLoginChange={props.onAutoLoginChange} onThemeChange={props.onThemeChange} onLogout={props.onLogout} readOnly={readOnly} />}
+    <BottomNav active={activeView} onNavigate={onNavigate} adapterId={props.adapterId} />
   </main>;
 }

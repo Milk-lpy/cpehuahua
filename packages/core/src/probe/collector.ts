@@ -1,5 +1,6 @@
 import type { CpeHttpTransport } from "../types/http";
 import type { EndpointProbeResult, ProbeEndpoint, ProbeReport } from "../types/probe";
+import type { AdapterId } from "../types/adapter";
 import { parseHuaweiXml } from "../xml/parser";
 import { sanitizeHuaweiXml } from "../xml/sanitize";
 
@@ -27,7 +28,7 @@ export class ProbeCollector {
   }
 
   async collect(
-    adapterId: "h168" | "h155",
+    adapterId: AdapterId,
     gateway: string | null,
     endpoints: readonly ProbeEndpoint[],
   ): Promise<ProbeReport> {

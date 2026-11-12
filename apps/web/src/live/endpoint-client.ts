@@ -1,5 +1,5 @@
-import { H168_PROBE_ENDPOINTS } from "@cpehuahua/core";
-import type { EndpointProbeResult, ProbeEndpoint } from "@cpehuahua/core";
+import { H168_PROBE_ENDPOINTS, identifyAdapter } from "@cpehuahua/core";
+import type { CpeAdapter, EndpointProbeResult, ProbeEndpoint } from "@cpehuahua/core";
 import { BridgeRequestGate } from "./bridge-request-gate";
 
 interface EndpointBridgePayload {
@@ -97,7 +97,7 @@ function isAuthenticationFailure(result: EndpointProbeResult): boolean {
 }
 
 /** Reads one endpoint through the local Surge Bridge; it never contacts Huawei directly. */
-export class H168EndpointClient {
+export class HuaweiEndpointClient {
   private readonly bridgeUrl: string;
   private readonly getPassword: () => string;
   private readonly rememberSession: () => boolean;
@@ -106,6 +106,7 @@ export class H168EndpointClient {
   private readonly onGateway: ((gateway: string | null) => void) | undefined;
   private readonly requestGate: BridgeRequestGate;
   private deviceConfirmed = false;
+  private matchedAdapter: CpeAdapter | null = null;
   private sessionPrimed = false;
   private latestGateway: string | null = null;
   private readonly blockedSessionRetries = new Set<string>();
@@ -124,21 +125,28 @@ export class H168EndpointClient {
     return this.latestGateway;
   }
 
+  get adapter(): CpeAdapter {
+    if (this.matchedAdapter === null) throw new Error("尚未识别已支持的设备型号");
+    return this.matchedAdapter;
+  }
+
   async authenticate(): Promise<void> {
     const basic = H168_PROBE_ENDPOINTS.find((item) => item.id === "device-basic-information");
-    const status = H168_PROBE_ENDPOINTS.find((item) => item.id === "monitoring-status");
-    if (!basic || !status) throw new Error("H168 认证端点未配置");
+    if (!basic) throw new Error("设备识别端点未配置");
 
     const basicResult = await this.read(basic);
     if (basicResult.status !== "ok") {
-      throw new Error(basicResult.transportError ?? "无法确认 H168 设备");
+      throw new Error(basicResult.transportError ?? "无法读取设备基本信息");
     }
+    if (this.matchedAdapter === null) throw new Error("设备型号未识别或暂不支持");
+    const status = this.matchedAdapter.probeEndpoints.find((item) => item.id === "monitoring-status");
+    if (!status) throw new Error(`${this.matchedAdapter.modelNames[0]} 未配置状态读取端点`);
     const statusResult = await this.read(status, true);
     if (statusResult.status !== "ok") {
       if (isAuthenticationFailure(statusResult)) {
-        throw new Error("管理密码错误，或 H168 登录会话已失效");
+        throw new Error("管理密码错误，或设备登录会话已失效");
       }
-      throw new Error(statusResult.transportError ?? "H168 登录失败，请检查设备连接");
+      throw new Error(statusResult.transportError ?? "设备登录失败，请检查设备连接");
     }
   }
 
@@ -148,7 +156,7 @@ export class H168EndpointClient {
 
   private async readUnlocked(endpoint: ProbeEndpoint, forceLogin = false): Promise<EndpointProbeResult> {
     if (endpoint.id !== "device-basic-information" && !this.deviceConfirmed) {
-      throw new Error("必须先通过 basic_information 确认 H168-383");
+      throw new Error("必须先通过基本信息确认受支持的设备型号");
     }
     const rememberSession = this.rememberSession();
     const password = this.getPassword();
@@ -193,9 +201,17 @@ export class H168EndpointClient {
       this.sessionPrimed = true;
     }
     if (endpoint.id === "device-basic-information") {
-      this.deviceConfirmed = result.status === "ok";
+      const identified = result.status === "ok" ? identifyAdapter(result.parsed) : null;
+      if (identified?.adapter?.id === "h168" || identified?.adapter?.id === "e6888") {
+        this.matchedAdapter = identified.adapter;
+        this.deviceConfirmed = identified.identification.confidence === "exact";
+      } else {
+        this.matchedAdapter = null;
+        this.deviceConfirmed = false;
+      }
     }
-    return result;
+    const adapterEndpoint = this.matchedAdapter?.probeEndpoints.find((item) => item.id === endpoint.id);
+    return adapterEndpoint ? { ...result, endpoint: adapterEndpoint } : result;
   }
 
   private async request(
@@ -241,5 +257,8 @@ export class H168EndpointClient {
     return { ...payload.endpointResult, endpoint };
   }
 }
+
+/** Backward-compatible name retained for existing H168 integrations. */
+export { HuaweiEndpointClient as H168EndpointClient };
 
 export { bridgePath, endpointPath };

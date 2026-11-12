@@ -1,10 +1,10 @@
 #!name=CPE Huahua Bridge (GitHub)
-#!desc=Local H168-383 monitor and bounded control bridge; write compatibility must be verified by device readback.
+#!desc=Local H168-383 and E6888-982 monitor; bounded controls are enabled only for verified device profiles.
 #!system=ios
 
 [Script]
 # The domain is intentionally dedicated to this bridge. Enable MITM only for it.
-cpehuahua-bridge = type=http-request,pattern=^https://cpe-bridge\.example\.com/api/(probe|live|endpoint/[a-z0-9-]+|network-probe|control)$,requires-body=true,max-size=16384,engine=webview,script-path=https://raw.githubusercontent.com/Milk-lpy/cpehuahua/refs/heads/main/surge/bridge.js?v=20260909-light-timeline,script-update-interval=86400,timeout=30
+cpehuahua-bridge = type=http-request,pattern=^https://cpe-bridge\.example\.com/api/(probe|live|endpoint/[a-z0-9-]+|network-probe|control)$,requires-body=true,max-size=16384,engine=webview,script-path=https://raw.githubusercontent.com/Milk-lpy/cpehuahua/refs/heads/main/surge/bridge.js?v=20261112-e6888,script-update-interval=86400,timeout=30
 
 [MITM]
 hostname = cpe-bridge.example.com

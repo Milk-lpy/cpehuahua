@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+<pci>684</pci><cell_id>[REDACTED]</cell_id><tac>[REDACTED]</tac>
+<rsrp></rsrp><rsrq></rsrq><rssi></rssi><sinr></sinr><earfcn></earfcn>
+<mode>12</mode><rrc_status>1</rrc_status><band>15MHz@175380(N5)</band><plmn>46011</plmn>
+<nrulbandwidth>15MHz</nrulbandwidth><nrdlbandwidth>15MHz</nrdlbandwidth>
+<nrulmcs>NRmcsUpCarrier1:25</nrulmcs>
+<nrdlmcs>NRmcsDownCarrier1Code0:0 NRmcsDownCarrier1Code1:NA</nrdlmcs>
+<nrtxpower>PPusch:8dBm PPucch:-6dBm PSrs:21dBm PPrach:7dBm</nrtxpower>
+<nrearfcn>DL:175380 UL:166380</nrearfcn>
+<nrulfreq>831900kHz</nrulfreq><nrdlfreq>876900kHz</nrdlfreq>
+<nrsinr>2dB</nrsinr><nrrsrp>-103dBm</nrrsrp><nrrsrq>-13.0dB</nrrsrq>
+<nrbler>0</nrbler><nrrank>1</nrrank><nrcqi0>15</nrcqi0><scc_pci></scc_pci>
+</response>

@@ -1,7 +1,7 @@
 {
   "name": "CPE Huahua",
   "short_name": "CPE Huahua",
-  "description": "Huawei / Brovi H168-383 read-only cellular monitor",
+  "description": "Huawei / Brovi CPE monitor with an unverified read-only E6888-982 profile",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

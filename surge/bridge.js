@@ -763,12 +763,20 @@ function updateContext(context, response) {
 }
 
 async function contextRequest(context, method, path, headers = {}, body = null) {
+  if (context.adapterId === "e6888") headers = { "X-Requested-With": "XMLHttpRequest", _ResponseSource: "Broswer", ...headers };
   const response = await deviceRequest(context.baseUrl, context.cookies, method, path, headers, body);
   updateContext(context, response);
   return response;
 }
 
 async function acquireToken(context) {
+  if (context.adapterId === "e6888") {
+    const response = await contextRequest(context, "GET", "/api/webserver/token");
+    const token = xmlText(response.body, ["token"]);
+    if (!isSuccessful(response) || !token || token.length <= 32) throw new Error("E6888 token 响应无效");
+    context.csrfToken = token.slice(32);
+    return context.csrfToken;
+  }
   let response = await contextRequest(context, "GET", "/api/webserver/SesTokInfo");
   let parsed = parseXml(response.body);
   let token = xmlText(response.body, ["TokInfo"]);
@@ -801,7 +809,11 @@ async function login(context, force) {
   }
   if (context.authenticated && context.csrfToken && cookieHeader(context.cookies)) return;
 
-  let content = await contextRequest(context, "GET", "/html/content.html");
+  const identity = await contextRequest(context, "GET", "/api/device/basic_information");
+  context.adapterId = looksLikeE6888(identity.body) ? "e6888" : "h168";
+  const loginFlag = context.adapterId === "e6888" ? "" : "<loginflag>2</loginflag>";
+
+  let content = await contextRequest(context, "GET", context.adapterId === "e6888" ? "/html/index.html" : "/html/content.html");
   if (!isSuccessful(content)) content = await contextRequest(context, "GET", "/");
 
   // This is advisory. The challenge flow below is the authority for new firmware.
@@ -812,7 +824,7 @@ async function login(context, force) {
     context.authenticated = true;
     return;
   }
-  if (!context.password) throw new Error("需要 H168 管理密码或仍有效的 Remember Session");
+  if (!context.password) throw new Error("需要设备管理密码或仍有效的 Remember Session");
 
   const challengeToken = await acquireToken(context);
   const firstNonce = randomNonce();
@@ -823,7 +835,7 @@ async function login(context, force) {
     authHeaders(context, challengeToken),
     "<request><username>" + escapeXml(context.username)
       + "</username><firstnonce>" + escapeXml(firstNonce)
-      + "</firstnonce><mode>1</mode><loginflag>2</loginflag></request>",
+      + "</firstnonce><mode>1</mode>" + loginFlag + "</request>",
   );
   const challengeParsed = parseXml(challenge.body);
   if (!isSuccessful(challenge) || challengeParsed.error) {
@@ -837,7 +849,8 @@ async function login(context, force) {
     throw new Error("challenge_login 响应缺少 salt/iterations/servernonce");
   }
 
-  const authenticationToken = await acquireToken(context);
+  const authenticationToken = context.adapterId === "e6888" && context.csrfToken
+    ? context.csrfToken : await acquireToken(context);
   const proof = await clientProof(context.password, firstNonce, salt, iterations, serverNonce);
   const authentication = await contextRequest(
     context,
@@ -846,14 +859,14 @@ async function login(context, force) {
     authHeaders(context, authenticationToken),
     "<request><clientproof>" + proof
       + "</clientproof><finalnonce>" + escapeXml(serverNonce)
-      + "</finalnonce><loginflag>2</loginflag></request>",
+      + "</finalnonce>" + loginFlag + "</request>",
   );
   const authenticationParsed = parseXml(authentication.body);
   if (!isSuccessful(authentication) || authenticationParsed.error) {
     throw new Error("authentication_login 失败" + (authenticationParsed.error?.code ? " (" + authenticationParsed.error.code + ")" : ""));
   }
   if (!cookieHeader(context.cookies)) throw new Error("认证完成后未获取到 SessionID");
-  context.csrfToken = authenticationToken;
+  if (context.adapterId !== "e6888") context.csrfToken = authenticationToken;
   context.authenticated = true;
 }
 
@@ -1207,6 +1220,12 @@ function normalizeLiveSnapshot(results) {
   const isSa = mode === "102" || mode === "12";
   const lte = metricSet(signal, false, false);
   const nr = metricSet(signal, true, isSa);
+  if (looksLikeE6888(basic)) {
+    const dlArfcn = xmlText(signal, ["nrearfcn"])?.match(/\bDL:\s*(\d+)/i);
+    const band = xmlText(signal, ["band"])?.match(/\((N\d+)\)/i);
+    if (dlArfcn) nr.arfcn = Number(dlArfcn[1]);
+    if (band && !xmlText(signal, ["bandInfo"])) nr.band = band[1].toUpperCase();
+  }
   const pcc = isSa
     ? (hasCellData(nr) ? makeCell("pcc", "NR", nr) : null)
     : hasCellData(lte)
@@ -1236,6 +1255,10 @@ function normalizeLiveSnapshot(results) {
     ...cellList(xmlText(neighborsDocument, ["nbrcell_ltelist"]), "LTE", "neighbor", false),
   ];
   const capabilities = emptyCapabilities();
+  if (looksLikeE6888(basic)) {
+    capabilities.secondaryCells = "unsupported";
+    capabilities.neighbors = "unsupported";
+  }
   markCapability(capabilities, results, "device-signal", "signal");
   markCapability(capabilities, results, "device-seccellinfo", "secondaryCells");
   markCapability(capabilities, results, "device-nbrcellinfo", "neighbors");
@@ -1256,6 +1279,10 @@ function normalizeLiveSnapshot(results) {
     timestamp: now(),
     source: "live",
     device: {
+      ...(looksLikeE6888(basic) ? {
+        batteryPercent: xmlNumber(status, ["BatteryPercent"]),
+        usbConnected: xmlText(status, ["usbup"]) === "1" ? true : xmlText(status, ["usbup"]) === "0" ? false : null,
+      } : {}),
       model: xmlText(basic, ["devicename", "DeviceName", "model", "modelname"])
         || xmlText(deviceInfo, ["devicename", "DeviceName", "model", "modelname"]),
       productName: xmlText(basic, ["spreadname_zh", "spreadname_en"])
@@ -1375,7 +1402,17 @@ function looksLikeH168(rawXml) {
     xmlText(rawXml, ["model"]),
     xmlText(rawXml, ["modelname"]),
   ].filter(Boolean).join(" ");
-  return /H168-383|Ultra\s*6|Brovi/i.test(model);
+  return /H168-383|Ultra\s*6/i.test(model);
+}
+
+function looksLikeE6888(rawXml) {
+  const model = [
+    xmlText(rawXml, ["DeviceName"]),
+    xmlText(rawXml, ["devicename"]),
+    xmlText(rawXml, ["model"]),
+    xmlText(rawXml, ["modelname"]),
+  ].filter(Boolean).join(" ");
+  return /E6888[-\s]?982/i.test(model);
 }
 
 function bridgeResponse(status, body) {
@@ -1889,7 +1926,7 @@ async function runControl() {
   }
   const gateway = gatewayAddress();
   if (!gateway) {
-    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接 H168 Wi-Fi。" });
+    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接设备 Wi-Fi。" });
     return;
   }
   const context = contextFromRequest();
@@ -1912,13 +1949,13 @@ function endpointById(id) {
 async function runEndpoint(endpointId) {
   const gateway = gatewayAddress();
   if (!gateway) {
-    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接 H168 Wi-Fi。" });
+    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接设备 Wi-Fi。" });
     return;
   }
 
   const endpointDefinition = endpointById(endpointId);
   if (!endpointDefinition) {
-    bridgeResponse(404, { error: "Unknown H168 endpoint", endpoint: endpointId });
+    bridgeResponse(404, { error: "Unknown device endpoint", endpoint: endpointId });
     return;
   }
 
@@ -1935,9 +1972,10 @@ async function runEndpoint(endpointId) {
   // read-only allowlist and are expected to be called after that gate.
   if (endpointDefinition.id === "device-basic-information"
     && result.status === "ok"
-    && !looksLikeH168(result.rawXml)) {
+    && !looksLikeH168(result.rawXml)
+    && !looksLikeE6888(result.rawXml)) {
     bridgeResponse(422, {
-      error: "默认网关返回的数据未确认是 H168-383。",
+      error: "默认网关返回的数据未确认是受支持设备。",
       gateway,
       endpoint: endpointDefinition.id,
       parsedFields: result.parsedFields,
@@ -1956,7 +1994,7 @@ async function runEndpoint(endpointId) {
 async function runProbe() {
   const gateway = gatewayAddress();
   if (!gateway) {
-    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接 H168 Wi-Fi。" });
+    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接设备 Wi-Fi。" });
     return;
   }
 
@@ -1968,7 +2006,7 @@ async function runProbe() {
   results.push(basicResult);
   if (basicResult.status !== "ok") {
     bridgeResponse(502, {
-      error: "无法读取 H168 basic_information；请检查 Wi-Fi、Surge 接管和设备地址。",
+      error: "无法读取设备 basic_information；请检查 Wi-Fi、Surge 接管和设备地址。",
       gateway,
       endpoint: basicResult.endpoint.id,
       status: basicResult.status,
@@ -1977,9 +2015,14 @@ async function runProbe() {
     });
     return;
   }
-  if (!looksLikeH168(basicResult.rawXml)) {
+  const adapterId = looksLikeH168(basicResult.rawXml)
+    ? "h168"
+    : looksLikeE6888(basicResult.rawXml)
+      ? "e6888"
+      : null;
+  if (adapterId === null) {
     bridgeResponse(422, {
-      error: "默认网关返回的数据未确认是 H168-383；没有继续访问其他 endpoint。",
+      error: "默认网关返回的数据未确认是受支持型号；没有继续访问其他 endpoint。",
       gateway,
       endpoint: basicResult.endpoint.id,
       parsedFields: basicResult.parsedFields,
@@ -1988,17 +2031,28 @@ async function runProbe() {
     return;
   }
 
+  const e6888EndpointIds = new Set([
+    "monitoring-status",
+    "net-current-plmn",
+    "device-signal",
+    "device-information",
+    "monitoring-traffic-statistics",
+    "monitoring-month-statistics",
+  ]);
+  const selectedEndpoints = ENDPOINTS.slice(1).filter((item) => (
+    adapterId !== "e6888" || e6888EndpointIds.has(item.id)
+  ));
   let authenticationError = null;
-  const hasPrivateEndpoints = ENDPOINTS.some((item) => item.requiresAuth);
+  const hasPrivateEndpoints = selectedEndpoints.some((item) => item.requiresAuth);
   if (hasPrivateEndpoints) {
     try {
       await login(context, false);
     } catch (error) {
-      authenticationError = error instanceof Error ? error.message : "H168 login failed";
+      authenticationError = error instanceof Error ? error.message : "device login failed";
     }
   }
 
-  for (const endpointDefinition of ENDPOINTS.slice(1)) {
+  for (const endpointDefinition of selectedEndpoints) {
     if (endpointDefinition.requiresAuth && authenticationError) {
       results.push(unavailableEndpoint(endpointDefinition, "登录未完成：" + authenticationError));
       continue;
@@ -2009,13 +2063,18 @@ async function runProbe() {
   if (context.rememberSession || context.rememberPassword) {
     saveStoredState(context);
   }
-  const browserResults = results.map((result) => safeEndpointResult(result));
+  const browserResults = results.map((result) => {
+    const safeResult = safeEndpointResult(result);
+    return adapterId === "e6888"
+      ? { ...safeResult, endpoint: { ...safeResult.endpoint, evidence: safeResult.status === "ok" ? "e6888-live-observed" : "candidate" } }
+      : safeResult;
+  });
   if ($request.url.endsWith("/api/live")) {
     const snapshot = normalizeLiveSnapshot(results);
     bridgeResponse(200, {
       schemaVersion: 1,
       generatedAt: now(),
-      adapterId: "h168",
+      adapterId,
       gateway,
       snapshot,
       history: [snapshot],
@@ -2026,7 +2085,7 @@ async function runProbe() {
   bridgeResponse(200, {
     schemaVersion: 1,
     generatedAt: now(),
-    adapterId: "h168",
+    adapterId,
     gateway,
     endpointResults: browserResults,
   });

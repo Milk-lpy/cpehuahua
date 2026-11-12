@@ -362,7 +362,7 @@ export class H168Adapter implements CpeAdapter {
     if (serialized.includes("h168-383")) {
       return { matched: true, confidence: "exact", reason: "响应中出现 H168-383" };
     }
-    if (serialized.includes("ultra 6") || serialized.includes("brovi")) {
+    if (serialized.includes("ultra 6")) {
       return { matched: true, confidence: "possible", reason: "响应中出现 Ultra 6/Brovi，但未出现精确型号" };
     }
     return { matched: false, confidence: "none", reason: "响应未确认 H168-383" };

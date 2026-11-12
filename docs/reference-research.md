@@ -38,6 +38,26 @@ cpehuahua。仓库快照以研究时 checkout 的 commit 为准；GitHub 页面�
 检测窗口和前后快照证据；主题复用现有 CSS token。没有复制上述项目代码，也没有新增
 第三方生产依赖。
 
+## E6888-982 适配评估（2026-10-22）
+
+更新（2026-11-12）：下述为初期评估；现已完成 E6888 实机读取验证。
+最新接入差异、公开项目复用评估与验证边界见 [e6888-findings.md](e6888-findings.md)。
+
+GitHub 精确搜索 `E6888-982`、`E6888-982 Huawei API` 和
+`E6888-982 SesTokInfo` 未找到能证明 E6888 固件接口兼容性的实现。评估过的通用
+项目如下；本次没有新增第三方依赖或复制其代码：
+
+| 项目 | 许可证、维护与依赖 | 安全及兼容性评估 | 决定 |
+| --- | --- | --- | --- |
+| [Salamek/huawei-lte-api](https://github.com/Salamek/huawei-lte-api) | LGPL-3.0；上游有近期 2.0.0 发布；Python >=3.9；运行依赖 `requests`、`xmltodict`、`pycryptodomex` | 通用 Huawei LAN/WAN API 项目，没有 E6888-982 实机兼容声明；包含设备写操作，接入前还需单独审查凭据、命令面和依赖。本项目是静态 React + Surge JS Bridge，不能直接复用 Python 客户端 | 仅作协议参考，不集成、不复制 |
+| [Brovi 官方 E6888-982 FAQ](https://brovi-tech.com/cn/uploads/soft/20250513/1747127878.pdf) 与[产品页](https://brovi-tech.com/productshow.php?cid=2&id=343) | 厂商资料，无代码许可证或运行依赖 | 确认 E6888-982 产品身份和 Web 管理入口；FAQ 给出默认地址 `192.168.8.1`，不能证明 `/api/device/basic_information`、登录握手或其他 Huawei XML endpoint 存在。运营商定制版本的管理地址可能不同 | 只作设备/网关证据；Bridge 继续使用当前默认网关，不写死地址 |
+
+所以当前 `E6888Adapter` 只作为隔离的只读候选：尝试基本信息、状态、运营商、信号、
+载波和流量端点，响应字段映射复用本项目的 H168 parser，但证据标记仍为 `candidate`。
+不显示重启、锁频、短信、WLAN 或其他写操作。此配置不是 E6888 实机适配完成证明；
+首台实机回传的脱敏 endpoint report 应用于修正地址、登录协议、字段和轮询间隔，再决定
+提升哪些能力。
+
 ## H168 相关端点证据
 
 ### 上游明确声称在 H168-383 上实测的端点

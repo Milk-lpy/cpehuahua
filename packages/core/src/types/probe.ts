@@ -1,7 +1,9 @@
 import type { CpeHttpResponse } from "./http";
 import type { ParsedHuaweiXml, HuaweiError } from "./xml";
+import type { AdapterId } from "./adapter";
 
 export type ProbeEvidence =
+  | "e6888-live-observed"
   | "h168-live-observed"
   | "h168-reference-claimed"
   | "reference-shape"
@@ -46,7 +48,7 @@ export interface EndpointProbeResult {
 export interface ProbeReport {
   schemaVersion: 1;
   generatedAt: string;
-  adapterId: "h168" | "h155";
+  adapterId: AdapterId;
   gateway: string | null;
   endpointResults: EndpointProbeResult[];
 }

@@ -43,6 +43,11 @@ const smsCountEndpoint: ProbeEndpoint = {
 };
 
 function response(forEndpoint = endpoint): EndpointProbeResult {
+  const isBasicInformation = forEndpoint.id === basicEndpoint.id;
+  const rawXml = isBasicInformation
+    ? "<response><devicename>H168-383</devicename></response>"
+    : "<response />";
+  const basicData = { devicename: "H168-383" };
   return {
     endpoint: forEndpoint,
     status: "ok",
@@ -52,10 +57,20 @@ function response(forEndpoint = endpoint): EndpointProbeResult {
     httpStatus: 200,
     huaweiError: null,
     transportError: null,
-    rawXml: "<response />",
-    sanitizedRawXml: "<response />",
-    parsed: null,
-    parsedFields: [],
+    rawXml,
+    sanitizedRawXml: rawXml,
+    parsed: isBasicInformation
+      ? {
+          rawXml,
+          rootName: "response",
+          data: { response: basicData },
+          response: basicData,
+          fields: ["response.devicename"],
+          error: null,
+          parseError: null,
+        }
+      : null,
+    parsedFields: isBasicInformation ? ["response.devicename"] : [],
   };
 }
 
@@ -67,9 +82,12 @@ describe("H168EndpointClient", () => {
 
   it("sends the password once and reuses a remembered session", async () => {
     const requests: RequestInit[] = [];
-    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       requests.push(init ?? {});
-      return new Response(JSON.stringify({ schemaVersion: 1, gateway: "192.168.8.1", endpointResult: response() }), { status: 200 });
+      const result = String(input).includes("device-basic-information")
+        ? response(basicEndpoint)
+        : response();
+      return new Response(JSON.stringify({ schemaVersion: 1, gateway: "192.168.8.1", endpointResult: result }), { status: 200 });
     });
     const client = new H168EndpointClient("https://bridge.example/api/probe", {
       getPassword: () => "secret",

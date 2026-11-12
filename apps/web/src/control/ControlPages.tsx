@@ -531,7 +531,7 @@ export function ManagedClients({ client, title = "设备列表" }: { client: H16
   );
 }
 
-export function SettingsPage({ client, rememberPassword, autoLogin, theme, onRememberPasswordChange, onAutoLoginChange, onThemeChange, onLogout }: {
+export function SettingsPage({ client, rememberPassword, autoLogin, theme, onRememberPasswordChange, onAutoLoginChange, onThemeChange, onLogout, readOnly = false }: {
   client: H168ControlClient;
   rememberPassword: boolean;
   autoLogin: boolean;
@@ -540,6 +540,7 @@ export function SettingsPage({ client, rememberPassword, autoLogin, theme, onRem
   onAutoLoginChange: (value: boolean) => void;
   onThemeChange: (theme: ColorTheme) => void;
   onLogout: () => void;
+  readOnly?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -568,13 +569,13 @@ export function SettingsPage({ client, rememberPassword, autoLogin, theme, onRem
           <button type="button" className={theme === "dark" ? "is-active" : ""} aria-pressed={theme === "dark"} onClick={() => onThemeChange("dark")}><span aria-hidden="true">☾</span><strong>夜间模式</strong><small>深色背景</small></button>
         </div>
       </section>
-      <section className="soft-panel">
+      {!readOnly && <section className="soft-panel">
         <div className="section-heading"><div><p className="eyebrow">设备维护</p><h2>即时操作</h2></div></div>
         <div className="maintenance-actions"><button type="button" className="primary-button" disabled={busy} onClick={() => setPendingAction("reconnect")}>重启网络</button><button type="button" className="warning-button" disabled={busy} onClick={() => setPendingAction("reboot")}>重启设备</button></div>
         {notice && <p className="action-notice">{notice}</p>}
         <ErrorText value={error} />
-      </section>
-      <section className="soft-panel support-panel"><div><p className="eyebrow">帮助与支持</p><h2>遇到问题可以联系开发者</h2></div><a className="support-link" href="https://github.com/Milk-lpy/cpehuahua/issues/new" target="_blank" rel="noreferrer"><span><strong>联系支持</strong><small>报告兼容性问题或提交 H168 脱敏证据</small></span><b aria-hidden="true">◎</b></a></section>
+      </section>}
+      <section className="soft-panel support-panel"><div><p className="eyebrow">帮助与支持</p><h2>遇到问题可以联系开发者</h2></div><a className="support-link" href="https://github.com/Milk-lpy/cpehuahua/issues/new" target="_blank" rel="noreferrer"><span><strong>联系支持</strong><small>报告兼容性问题或提交脱敏设备证据</small></span><b aria-hidden="true">◎</b></a></section>
       <section className="soft-panel account-panel">
         <div className="section-heading"><div><p className="eyebrow">账号与安全</p><h2>登录设置</h2></div></div>
         <div className="control-row"><div><strong>保存密码</strong><small>下次打开可使用当前管理密码</small></div><Toggle checked={rememberPassword} label="保存密码" onChange={onRememberPasswordChange} /></div>

@@ -4,9 +4,10 @@
 
 - iPhone Safari/PWA 是实时监控入口，H168 本地 API 不能依赖远端 Internet。
 - Surge 是本地 HTTP Bridge：发现 `$network.v4.primaryRouter`，保存本地 Session，
-  请求 H168，并向浏览器返回统一 JSON。
+  请求本地 Huawei/Brovi 设备，并向浏览器返回统一 JSON。
 - V1 只读；禁止锁频、锁小区、改 APN、改 Wi-Fi、重启或任何配置写入。
-- H168 是完整实现边界；H155 只有预留 Adapter；前端不得理解 Huawei XML。
+- H168 是已验证实现边界；E6888 仅有隔离的只读候选 Adapter，H155 只有预留
+  Adapter；前端不得理解 Huawei XML。
 - 未验证字段保持 `null`；能力状态分成 `unknown`、`observed`、`unsupported`。
 
 ## 分层
@@ -19,7 +20,7 @@ packages/core
   types      CpeSnapshot、Cell、ProbeResult、Event
   xml        保留 raw 的 Huawei XML parser + error/key extraction
   auth       Cookie/CSRF/SessionID 状态机，最多一次重新认证
-  adapters   CpeAdapter → H168Adapter / H155Adapter stub
+  adapters   CpeAdapter → H168Adapter / E6888Adapter candidate / H155Adapter stub
   probe      端点目录、顺序采集器、脱敏结果
 surge
   module + experimental bridge（本地 HTTP、登录、Probe、endpoint、network probe 和 live 回退）
@@ -28,7 +29,7 @@ surge
 ## 数据流
 
 ```text
-H168 XML + HTTP metadata
+Huawei/Brovi XML + HTTP metadata
         │
         ├── rawXml（本地保留，不能上传）
         ├── parsed value / field paths / Huawei error

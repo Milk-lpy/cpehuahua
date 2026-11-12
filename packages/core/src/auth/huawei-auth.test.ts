@@ -50,6 +50,30 @@ class FakeHuaweiTransport implements CpeHttpTransport {
 }
 
 describe("Huawei authentication state machine", () => {
+  it("uses E6888's token endpoint and challenge response token without resetting the challenge", async () => {
+    const requests: CpeHttpRequest[] = [];
+    const transport: CpeHttpTransport = { async request(request) {
+      requests.push(request);
+      if (request.path === "/html/index.html") return { ...response("<html/>"), headers: { "Set-Cookie": "SessionID=e6888-session; Path=/" } };
+      if (request.path === "/api/webserver/token") return response(`<response><token>${"0".repeat(32)}initial-token</token></response>`);
+      if (request.path === "/api/user/challenge_login") return { ...response(fixture("challenge.xml")), headers: { "__requestverificationtoken": "challenge-token" } };
+      if (request.path === "/api/user/authentication_login") return { ...response(fixture("authentication.xml")), headers: { "__RequestVerificationTokenone": "authenticated-token" } };
+      return response("<response><ConnectionStatus>901</ConnectionStatus></response>");
+    } };
+    const machine = new HuaweiAuthMachine(transport, { username: "admin", password: "fixture-password", profile: "e6888", nonceFactory: () => "fixture-first-nonce" });
+    await machine.login();
+    await machine.requestWithSession({ method: "GET", path: "/api/monitoring/status", headers: {}, body: null });
+    expect(requests.filter(r => r.path === "/api/webserver/token")).toHaveLength(1);
+    expect(requests.some(r => r.path === "/api/webserver/SesTokInfo")).toBe(false);
+    const challenge = requests.find(r => r.path.endsWith("challenge_login"))!;
+    const authentication = requests.find(r => r.path.endsWith("authentication_login"))!;
+    expect(challenge.headers.__RequestVerificationToken).toBe("initial-token");
+    expect(authentication.headers.__RequestVerificationToken).toBe("challenge-token");
+    expect(authentication.body).not.toContain("loginflag");
+    expect(authentication.body).not.toContain("fixture-password");
+    expect(requests.at(-1)?.headers.__RequestVerificationToken).toBe("authenticated-token");
+    expect(requests.at(-1)?.headers.Cookie).toContain("SessionID=e6888-session");
+  });
   it("uses SessionID plus separate tokens for challenge and authentication", async () => {
     const transport = new FakeHuaweiTransport();
     const machine = new HuaweiAuthMachine(transport, {

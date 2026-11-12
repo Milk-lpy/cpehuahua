@@ -1,11 +1,12 @@
 import type { CpeEvent } from "./event";
 import type { CpeSnapshot } from "./model";
+import type { AdapterId } from "./adapter";
 
 /** Browser-facing envelope for one normalized live poll. Raw Huawei XML is not part of it. */
 export interface CpeLiveReport {
   schemaVersion: 1;
   generatedAt: string;
-  adapterId: "h168" | "h155";
+  adapterId: AdapterId;
   gateway: string | null;
   snapshot: CpeSnapshot;
   /** Optional short history; the local browser may also maintain its own buffer. */

@@ -32,6 +32,8 @@ export type RadioMode = "2G" | "3G" | "4G" | "5G" | "unknown";
 export type SaNsaMode = "SA" | "NSA" | "unknown";
 
 export interface DeviceIdentity {
+  batteryPercent?: Nullable<number>;
+  usbConnected?: Nullable<boolean>;
   model: Nullable<string>;
   productName: Nullable<string>;
   hardwareVersion: Nullable<string>;

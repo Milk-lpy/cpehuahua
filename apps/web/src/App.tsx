@@ -5,7 +5,7 @@ import { H168ControlClient } from "./control/client";
 import { DashboardPage } from "./dashboard/DashboardPage";
 import { LoginPage } from "./auth/LoginPage";
 import { loadAuthPreferences, saveAuthPreferences } from "./live/auth-storage";
-import { H168EndpointClient } from "./live/endpoint-client";
+import { HuaweiEndpointClient } from "./live/endpoint-client";
 import { BridgeRequestGate } from "./live/bridge-request-gate";
 import { DevicePollingSession } from "./live/device-session";
 import { SurgeNetworkProbeClient } from "./live/network-client";
@@ -36,17 +36,21 @@ const LIVE_CORE_ENDPOINTS = new Set([
   "sms-count",
 ]);
 
-const LIVE_ENDPOINTS = H168_PROBE_ENDPOINTS.filter((endpoint) => (
-  LIVE_CORE_ENDPOINTS.has(endpoint.id) || endpoint.id === "device-information"
-));
+function liveEndpointsFor(client: HuaweiEndpointClient) {
+  const candidateIds = new Set(client.adapter.probeEndpoints.map((endpoint) => endpoint.id));
+  const liveIds = client.adapter.id === "h168"
+    ? new Set([...LIVE_CORE_ENDPOINTS, "device-information"])
+    : candidateIds;
+  return client.adapter.probeEndpoints.filter((endpoint) => liveIds.has(endpoint.id));
+}
 
 type AuthStatus = "checking" | "login" | "authenticated";
 
 function userFacingBridgeError(cause: unknown): string {
   if (cause instanceof Error && /load failed|failed to fetch|networkerror/i.test(cause.message)) {
-    return "无法访问本地 Bridge：请在 Surge 中启用 CPE Huahua Module，并连接 H168 Wi-Fi。";
+    return "无法访问本地 Bridge：请在 Surge 中启用 CPE Huahua Module，并连接设备 Wi-Fi。";
   }
-  return cause instanceof Error ? cause.message : "无法连接 H168";
+  return cause instanceof Error ? cause.message : "无法连接设备";
 }
 
 function liveEndpointError(result: EndpointProbeResult): string {
@@ -63,10 +67,10 @@ function LoadingScreen({ theme, onThemeChange }: { theme: ColorTheme; onThemeCha
   return (
     <main className="app-shell login-shell" aria-live="polite">
       <section className="login-card login-card--loading">
-        <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><i>H168-383</i><ThemeToggle theme={theme} onChange={onThemeChange} /></div>
+        <div className="brand-line"><span className="brand-paw brand-paw--rose" aria-hidden="true">●</span><strong>CPE 花花</strong><i>设备管理</i><ThemeToggle theme={theme} onChange={onThemeChange} /></div>
         <p className="eyebrow">Secure session</p>
         <h1>正在自动登录</h1>
-        <p className="lede">正在通过本地 Surge Bridge 恢复 H168 会话。</p>
+        <p className="lede">正在通过本地 Surge Bridge 恢复设备会话。</p>
       </section>
     </main>
   );
@@ -88,7 +92,7 @@ function App() {
   const [liveMonitoring, setLiveMonitoring] = useState(false);
   const [liveErrors, setLiveErrors] = useState<Record<string, string>>({});
   const liveSessionRef = useRef<DevicePollingSession | null>(null);
-  const liveClientRef = useRef<H168EndpointClient | null>(null);
+  const liveClientRef = useRef<HuaweiEndpointClient | null>(null);
   const livePasswordRef = useRef("");
   const autoLoginAttemptedRef = useRef(false);
   const bridgeRequestGate = useMemo(() => new BridgeRequestGate(), [bridgeUrl]);
@@ -101,13 +105,14 @@ function App() {
     requestGate: bridgeRequestGate,
   }), [bridgeUrl, bridgeRequestGate, rememberPassword]);
 
-  function startLiveMonitoring(client: H168EndpointClient) {
+  function startLiveMonitoring(client: HuaweiEndpointClient) {
     liveSessionRef.current?.stop();
     setLiveErrors({});
     const configuredProbeUrl = networkProbeUrl.trim();
     const networkClient = new SurgeNetworkProbeClient(bridgeUrl);
     const session = new DevicePollingSession(client.read.bind(client), {
-      endpoints: LIVE_ENDPOINTS,
+      adapter: client.adapter,
+      endpoints: liveEndpointsFor(client),
       getGateway: () => client.gateway,
       ...(configuredProbeUrl
         ? {
@@ -127,7 +132,7 @@ function App() {
         });
       },
       onEndpointResult: (result) => {
-        if (!LIVE_CORE_ENDPOINTS.has(result.endpoint.id)) return;
+        if (!liveEndpointsFor(client).some((endpoint) => endpoint.id === result.endpoint.id)) return;
         if (result.status === "ok") {
           setLiveErrors((current) => {
             if (!(result.endpoint.id in current)) return current;
@@ -153,7 +158,7 @@ function App() {
     setAuthLoading(true);
     setAuthError(null);
     if (inputPassword) livePasswordRef.current = inputPassword;
-    const client = new H168EndpointClient(bridgeUrl, {
+    const client = new HuaweiEndpointClient(bridgeUrl, {
       getPassword: () => livePasswordRef.current,
       rememberSession: () => true,
       rememberPassword: () => rememberPassword,
@@ -161,13 +166,18 @@ function App() {
     });
     try {
       await client.authenticate();
+      if (liveReport !== null && liveReport.adapterId !== client.adapter.id) {
+        clearPersistedLiveReport();
+        setLiveReport(null);
+        setRestoredFromStorage(false);
+      }
       liveClientRef.current = client;
       setAuthStatus("authenticated");
       setView("overview");
       startLiveMonitoring(client);
     } catch (cause) {
       setAuthStatus("login");
-      setAuthError(automatic ? "自动登录未完成，请输入 H168 管理密码。" : userFacingBridgeError(cause));
+      setAuthError(automatic ? "自动登录未完成，请输入设备管理密码。" : userFacingBridgeError(cause));
     } finally {
       setAuthLoading(false);
     }
@@ -271,6 +281,7 @@ function App() {
   return (
     <DashboardPage
       activeView={view}
+      adapterId={liveClientRef.current?.adapter.id ?? liveReport?.adapterId ?? "h168"}
       snapshot={liveReport?.snapshot ?? null}
       history={liveReport?.history ?? []}
       events={liveReport?.events ?? []}

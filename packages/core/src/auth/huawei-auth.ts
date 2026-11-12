@@ -30,6 +30,7 @@ export interface HuaweiAuthOptions {
   username: string;
   password: string;
   loginFlag?: string;
+  profile?: "h168" | "e6888";
   nonceFactory?: () => string;
 }
 
@@ -229,6 +230,7 @@ export class HuaweiAuthMachine {
   private readonly username: string;
   private readonly password: string;
   private readonly loginFlag: string;
+  private readonly profile: "h168" | "e6888";
   private readonly nonceFactory: () => string;
   private readonly jar = new CookieJar();
   private readonly traces: AuthTrace[] = [];
@@ -240,7 +242,8 @@ export class HuaweiAuthMachine {
     this.transport = transport;
     this.username = options.username;
     this.password = options.password;
-    this.loginFlag = options.loginFlag ?? "2";
+    this.profile = options.profile ?? "h168";
+    this.loginFlag = options.loginFlag ?? (this.profile === "e6888" ? "" : "2");
     this.nonceFactory = options.nonceFactory ?? createNonce;
   }
 
@@ -271,7 +274,10 @@ export class HuaweiAuthMachine {
   }
 
   private async send(request: CpeHttpRequest, token: string | null = null): Promise<CpeHttpResponse> {
-    const headers: HttpHeaders = { ...request.headers };
+    const headers: HttpHeaders = {
+      ...(this.profile === "e6888" ? { "X-Requested-With": "XMLHttpRequest", _ResponseSource: "Broswer" } : {}),
+      ...request.headers,
+    };
     const cookie = this.jar.header();
     if (cookie && !hasHeader(headers, "cookie")) {
       headers.Cookie = cookie;
@@ -283,6 +289,11 @@ export class HuaweiAuthMachine {
     try {
       const response = await this.transport.request({ ...request, headers });
       this.updateSessionFromResponse(response);
+      if (this.profile === "e6888") {
+        const rotated = headerValues(response.headers, "__RequestVerificationTokenone")[0]
+          ?? headerValues(response.headers, "__RequestVerificationToken")[0];
+        if (rotated) this.csrfTokenValue = rotated;
+      }
       this.traces.push({
         method: request.method,
         path: request.path,
@@ -309,6 +320,14 @@ export class HuaweiAuthMachine {
   }
 
   private async acquireToken(): Promise<string> {
+    if (this.profile === "e6888") {
+      const response = await this.send({ method: "GET", path: "/api/webserver/token", headers: {}, body: null });
+      const token = textOfHuaweiField(parseHuaweiXml(response.body), ["token"]);
+      this.assertResponse(response, "token");
+      if (!token || token.length <= 32) throw new HuaweiAuthError("E6888 token 响应无效", this.stateValue);
+      this.csrfTokenValue = token.slice(32);
+      return this.csrfTokenValue;
+    }
     const sessionResponse = await this.send({
       method: "GET",
       path: "/api/webserver/SesTokInfo",
@@ -362,7 +381,10 @@ export class HuaweiAuthMachine {
     this.csrfTokenValue = null;
     this.traces.length = 0;
     try {
-      const content = await this.send({ method: "GET", path: "/html/content.html", headers: {}, body: null });
+      if (this.profile === "e6888") {
+        await this.send({ method: "GET", path: "/api/device/basic_information", headers: {}, body: null });
+      }
+      const content = await this.send({ method: "GET", path: this.profile === "e6888" ? "/html/index.html" : "/html/content.html", headers: {}, body: null });
       if (!isSuccess(content)) {
         await this.send({ method: "GET", path: "/", headers: {}, body: null });
       }
@@ -382,7 +404,7 @@ export class HuaweiAuthMachine {
           body:
             `<request><username>${escapeXml(this.username)}</username>`
             + `<firstnonce>${escapeXml(firstNonce)}</firstnonce><mode>1</mode>`
-            + `<loginflag>${escapeXml(this.loginFlag)}</loginflag></request>`,
+            + (this.loginFlag ? `<loginflag>${escapeXml(this.loginFlag)}</loginflag>` : "") + `</request>`,
         },
         challengeToken,
       );
@@ -397,7 +419,8 @@ export class HuaweiAuthMachine {
       }
       this.stateValue = "challenged";
 
-      const authenticationToken = await this.acquireToken();
+      const authenticationToken = this.profile === "e6888" && this.csrfTokenValue
+        ? this.csrfTokenValue : await this.acquireToken();
       const clientProof = await computeHuaweiClientProof(
         this.password,
         firstNonce,
@@ -413,7 +436,7 @@ export class HuaweiAuthMachine {
           body:
             `<request><clientproof>${clientProof}</clientproof>`
             + `<finalnonce>${escapeXml(serverNonce)}</finalnonce>`
-            + `<loginflag>${escapeXml(this.loginFlag)}</loginflag></request>`,
+            + (this.loginFlag ? `<loginflag>${escapeXml(this.loginFlag)}</loginflag>` : "") + `</request>`,
         },
         authenticationToken,
       );
@@ -424,7 +447,7 @@ export class HuaweiAuthMachine {
       this.stateValue = "authenticated";
       return {
         sessionId: this.sessionId,
-        csrfToken: authenticationToken,
+        csrfToken: this.csrfTokenValue ?? authenticationToken,
         trace: [...this.traces],
       };
     } catch (error) {
