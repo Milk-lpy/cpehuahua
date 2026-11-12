@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import type { EndpointProbeResult, ProbeEndpoint } from "@cpehuahua/core";
 import { H168EndpointClient, endpointPath } from "./endpoint-client";
 
+it("preserves basic-information parse diagnostics instead of hiding the Bridge failure", async () => {
+  const result = response(basicEndpoint);
+  result.status = "parse-error";
+  result.parsed!.parseError = "Surge WebView does not expose DOMParser";
+  const client = new H168EndpointClient("https://bridge.example/api/probe", {
+    fetcher: async () => new Response(JSON.stringify({ schemaVersion: 1, gateway: "192.168.8.1",
+      bridgeVersion: "test-bridge", endpointResult: result }), { status: 200 }),
+  });
+  await expect(client.authenticate()).rejects.toThrow(/DOMParser.*192\.168\.8\.1.*test-bridge/);
+});
+
 const endpoint: ProbeEndpoint = {
   id: "device-signal",
   label: "Signal",

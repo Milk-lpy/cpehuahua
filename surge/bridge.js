@@ -11,6 +11,7 @@
  */
 
 const STORE_KEY = "cpehuahua.bridge.v1";
+const BRIDGE_VERSION = "20261112-e6888-r2";
 const DEVICE_TIMEOUT_SECONDS = 8;
 // Keep this list narrow: only the hosted PWA and local development origin may
 // read Bridge responses. The Bridge host itself is configured separately in
@@ -427,6 +428,8 @@ function deviceRequest(baseUrl, cookies, method, path, headers, body) {
     if (cookiesForRequest) requestHeaders.Cookie = cookiesForRequest;
     const options = {
       url: baseUrl + path,
+      // Device management is local traffic, regardless of the phone's proxy group.
+      policy: "DIRECT",
       headers: requestHeaders,
       timeout: DEVICE_TIMEOUT_SECONDS,
       "auto-cookie": false,
@@ -1431,7 +1434,7 @@ function bridgeResponse(status, body) {
     response: {
       status,
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, bridgeVersion: BRIDGE_VERSION }),
     },
   });
 }

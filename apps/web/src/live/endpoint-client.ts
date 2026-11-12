@@ -5,6 +5,7 @@ import { BridgeRequestGate } from "./bridge-request-gate";
 interface EndpointBridgePayload {
   schemaVersion: 1;
   gateway: string | null;
+  bridgeVersion?: string;
   endpointResult: EndpointProbeResult;
 }
 
@@ -109,6 +110,7 @@ export class HuaweiEndpointClient {
   private matchedAdapter: CpeAdapter | null = null;
   private sessionPrimed = false;
   private latestGateway: string | null = null;
+  private latestBridgeVersion = "版本未知，请更新 Surge 模块";
   private readonly blockedSessionRetries = new Set<string>();
 
   constructor(bridgeUrl: string, options: EndpointClientOptions = {}) {
@@ -136,7 +138,11 @@ export class HuaweiEndpointClient {
 
     const basicResult = await this.read(basic);
     if (basicResult.status !== "ok") {
-      throw new Error(basicResult.transportError ?? "无法读取设备基本信息");
+      const detail = basicResult.transportError
+        ?? basicResult.parsed?.parseError
+        ?? (basicResult.huaweiError ? `设备错误 ${basicResult.huaweiError.code}` : null)
+        ?? `HTTP ${basicResult.httpStatus ?? "无响应"} / ${basicResult.status}`;
+      throw new Error(`无法读取设备基本信息：${detail}（网关 ${this.latestGateway ?? "未知"}；Bridge ${this.latestBridgeVersion}）`);
     }
     if (this.matchedAdapter === null) throw new Error("设备型号未识别或暂不支持");
     const status = this.matchedAdapter.probeEndpoints.find((item) => item.id === "monitoring-status");
@@ -253,6 +259,7 @@ export class HuaweiEndpointClient {
       this.blockedSessionRetries.clear();
     }
     this.latestGateway = payload.gateway;
+    this.latestBridgeVersion = payload.bridgeVersion ?? "版本未知，请更新 Surge 模块";
     this.onGateway?.(this.latestGateway);
     return { ...payload.endpointResult, endpoint };
   }
