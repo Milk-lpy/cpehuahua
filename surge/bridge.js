@@ -11,7 +11,8 @@
  */
 
 const STORE_KEY = "cpehuahua.bridge.v1";
-const BRIDGE_VERSION = "20261112-e6888-r2";
+const BRIDGE_VERSION = "20261112-e6888-r3";
+const TARGET_STORE_KEY = "cpehuahua.read-target.v1";
 const DEVICE_TIMEOUT_SECONDS = 8;
 // Keep this list narrow: only the hosted PWA and local development origin may
 // read Bridge responses. The Bridge host itself is configured separately in
@@ -354,6 +355,7 @@ function saveStoredState(context) {
   if (context.authenticated && context.rememberSession && Object.keys(context.cookies).length > 0) {
     state.cookies = context.cookies;
     state.csrfToken = context.csrfToken;
+    state.gateway = context.baseUrl?.replace(/^http:\/\//, "") || null;
   }
   if (context.authenticated && context.rememberPassword && context.password) {
     state.password = context.password;
@@ -737,6 +739,7 @@ function contextFromRequest() {
     : null;
   return {
     baseUrl: null,
+    sessionGateway: typeof stored.gateway === "string" ? stored.gateway : null,
     cookies,
     csrfToken,
     password: payloadPassword || (rememberPassword ? storedPassword : ""),
@@ -813,6 +816,9 @@ async function login(context, force) {
   if (context.authenticated && context.csrfToken && cookieHeader(context.cookies)) return;
 
   const identity = await contextRequest(context, "GET", "/api/device/basic_information");
+  if (!isSuccessful(identity) || (!looksLikeE6888(identity.body) && !looksLikeH168(identity.body))) {
+    throw new Error("登录前无法确认设备型号，请重新连接设备");
+  }
   context.adapterId = looksLikeE6888(identity.body) ? "e6888" : "h168";
   const loginFlag = context.adapterId === "e6888" ? "" : "<loginflag>2</loginflag>";
 
@@ -1398,6 +1404,42 @@ function gatewayAddress() {
   return $network?.v4?.primaryRouter || null;
 }
 
+function rememberedReadTarget() {
+  try {
+    const saved = JSON.parse($persistentStore.read(TARGET_STORE_KEY) || "null");
+    const primary = gatewayAddress();
+    return saved && saved.networkGateway === primary
+      && [primary, "192.168.8.1"].includes(saved.gateway) ? saved.gateway : null;
+  } catch { return null; }
+}
+
+function bindReadTarget(context, gateway) {
+  // A remembered session belongs to one management address only.
+  if (context.sessionGateway !== gateway) {
+    context.cookies = {};
+    context.csrfToken = null;
+    context.authenticated = false;
+  }
+  context.baseUrl = "http://" + gateway;
+}
+
+async function discoverReadTarget() {
+  const primary = gatewayAddress();
+  const candidates = [...new Set([rememberedReadTarget(), primary, "192.168.8.1"].filter(Boolean))];
+  let failure = null;
+  for (const gateway of candidates) {
+    // Discovery is public and never forwards the remembered session or password.
+    const context = { baseUrl: "http://" + gateway, cookies: {}, csrfToken: null };
+    const result = await collectEndpoint(context, ENDPOINTS[0]);
+    if (!failure) failure = { gateway, result };
+    if (result.status === "ok" && (looksLikeH168(result.rawXml) || looksLikeE6888(result.rawXml))) {
+      $persistentStore.write(JSON.stringify({ networkGateway: primary, gateway }), TARGET_STORE_KEY);
+      return { gateway, result };
+    }
+  }
+  return failure;
+}
+
 function looksLikeH168(rawXml) {
   const model = [
     xmlText(rawXml, ["DeviceName"]),
@@ -1950,21 +1992,24 @@ function endpointById(id) {
 }
 
 async function runEndpoint(endpointId) {
-  const gateway = gatewayAddress();
-  if (!gateway) {
-    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接设备 Wi-Fi。" });
-    return;
-  }
-
   const endpointDefinition = endpointById(endpointId);
   if (!endpointDefinition) {
     bridgeResponse(404, { error: "Unknown device endpoint", endpoint: endpointId });
     return;
   }
 
+  const target = endpointId === "device-basic-information" || !rememberedReadTarget()
+    ? await discoverReadTarget() : null;
+  const gateway = target?.gateway || rememberedReadTarget();
+  if (!gateway) throw new Error("未发现可读取的设备管理地址");
+  if (endpointId !== "device-basic-information" && target
+    && (target.result.status !== "ok" || (!looksLikeH168(target.result.rawXml) && !looksLikeE6888(target.result.rawXml)))) {
+    throw new Error("无法确认设备管理地址，请先重新登录");
+  }
   const context = contextFromRequest();
-  context.baseUrl = "http://" + gateway;
-  const result = await collectEndpoint(context, endpointDefinition);
+  bindReadTarget(context, gateway);
+  const result = endpointId === "device-basic-information"
+    ? target.result : await collectEndpoint(context, endpointDefinition);
   if (context.rememberSession || context.rememberPassword) {
     saveStoredState(context);
   }
@@ -1995,17 +2040,12 @@ async function runEndpoint(endpointId) {
 }
 
 async function runProbe() {
-  const gateway = gatewayAddress();
-  if (!gateway) {
-    bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接设备 Wi-Fi。" });
-    return;
-  }
-
+  const target = await discoverReadTarget();
+  const gateway = target.gateway;
   const context = contextFromRequest();
-  context.baseUrl = "http://" + gateway;
+  bindReadTarget(context, gateway);
   const results = [];
-  const basicEndpoint = ENDPOINTS[0];
-  const basicResult = await collectEndpoint(context, basicEndpoint);
+  const basicResult = target.result;
   results.push(basicResult);
   if (basicResult.status !== "ok") {
     bridgeResponse(502, {

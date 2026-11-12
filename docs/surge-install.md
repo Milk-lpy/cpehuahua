@@ -1,7 +1,7 @@
 # Surge Module 安装与 H168 实时监控
 
-当前 `surge/bridge.js` 是本地有界 Bridge：它会发现 IPv4 默认网关、先读取
-`basic_information` 确认 H168-383，再读取公开和认证 endpoint。`/api/probe` 返回
+当前 `surge/bridge.js` 是本地有界 Bridge：先读取默认网关的 `basic_information`，
+必要时检查已知管理地址 `192.168.8.1`，确认 H168-383 或 E6888-982 后读取数据。`/api/probe` 返回
 脱敏 `ProbeReport`，`/api/endpoint/<id>` 返回一个脱敏 endpoint 结果，`/api/network-probe`
 返回一次 Surge 用户路径样本，`/api/live` 返回单次脱敏 `CpeLiveReport`。真实固件、
 Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新由 PWA 的
@@ -50,6 +50,11 @@ Cookie/Token 轮换和字段含义仍需用户设备验证；默认连续刷新�
 配置错误，先不要提交密码。
 
 ## 失败时记录什么
+
+`20261112-e6888-r3` 修复手机默认网关为 `192.168.9.1`、E6888 管理界面实际在
+`192.168.8.1` 的情况：先做公开型号识别，默认网关失败后尝试已知 E6888 地址；
+找到受支持型号才会登录，后续读取复用该地址。发现的地址按当前网络缓存，
+切换网络后重新识别；跨管理地址不会沿用旧 Cookie/Token。
 
 E6888 读取修正版本为 `20261112-e6888-r2`。设备 HTTP 请求显式使用
 `policy: DIRECT`，不跟随手机的代理组。Safari 能读到型号而页面失败时，
