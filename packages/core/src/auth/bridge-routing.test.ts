@@ -7,6 +7,33 @@ const bridge = readFileSync(new URL("../../../../surge/bridge.js", import.meta.u
 const functions = bridge.slice(0, bridge.indexOf("const endpointId = endpointIdFromRequest();"));
 
 describe("Surge local-device routing", () => {
+  it("rejects E6888 writes before login or upstream POST", async () => {
+    const posts: string[] = [];
+    const actions = ["sms.send", "sms.delete", "sms.read", "network.set", "network.lock", "network.unlock", "network.mobile-data", "network.reconnect", "traffic.clear", "clients.block", "clients.unblock", "device.reboot"];
+    for (const action of actions) {
+      await expect(runInNewContext(functions + `verifyControlTarget({baseUrl:'http://192.168.8.1',cookies:{}}, '${action}')`, {
+        $httpClient: {
+          get: (_options: unknown, cb: (error: null, response: object, body: string) => void) => cb(null, {status:200,headers:{}}, '<response><devicename>E6888-982</devicename></response>'),
+          post: (options: {url: string}) => posts.push(options.url),
+        },
+      })).rejects.toThrow("暂未开放");
+    }
+    expect(posts).toEqual([]);
+  });
+
+  it("refreshes the E6888 SMS query token and preserves pagination and XML text", async () => {
+    const calls: string[] = [];
+    const result = await runInNewContext(functions + `
+      login = async () => calls.push('login');
+      acquireToken = async () => calls.push('token');
+      authenticatedPost = async (_c, path, body) => { calls.push(path); calls.push(body); return {status:200,headers:{},body:'<response><Count>1</Count><Messages><Message><Index>4</Index><Smstat>0</Smstat><Phone>TEST</Phone><Content>test &amp; &lt;safe&gt;</Content></Message></Messages></response>'}; };
+      executeControl({adapterId:'e6888'}, 'sms.list', {box:1,page:2,count:20});
+    `, {calls});
+    expect(calls.slice(0,3)).toEqual(['login','token','/api/sms/sms-list']);
+    expect(calls[3]).toContain('<PageIndex>2</PageIndex>');
+    expect(result.status).toBe('ok');
+    expect(result.data.messages[0]).toMatchObject({index:'4',unread:true,content:'test & <safe>'});
+  });
   it("identifies an older saved session before polling without requiring the password again", async () => {
     const storage = JSON.stringify({ gateway: "192.168.8.1", cookies: { SessionID: "fixture" }, csrfToken: "fixture-token", rememberSession: true });
     const paths: string[] = [];

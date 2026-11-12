@@ -14,6 +14,9 @@ const E6888_ENDPOINT_IDS = new Set([
   "device-information",
   "monitoring-traffic-statistics",
   "monitoring-month-statistics",
+  "sms-count",
+  "monitoring-check-notifications",
+  "wlan-host-list",
 ]);
 
 /**
@@ -31,6 +34,9 @@ export const E6888_PROBE_ENDPOINTS = H168_PROBE_ENDPOINTS
       "device-information": 60_000,
       "monitoring-traffic-statistics": 2_000,
       "monitoring-month-statistics": 60_000,
+      "sms-count": 10_000,
+      "monitoring-check-notifications": 10_000,
+      "wlan-host-list": 10_000,
     } as Record<string, number>)[endpoint.id] ?? null,
     evidence: "e6888-live-observed" as const,
   }));

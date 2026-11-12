@@ -1,5 +1,31 @@
 # E6888-982 接入与验证（2026-11-12）
 
+## r5 短信与只读功能（2026-11-12）
+
+本轮重新读取实机，确认 `sms-count`、`check-notifications`、`wlan/host-list`、
+`net-mode`、`net-mode-list`、`lock-freq`、`mobile-dataswitch` 和
+`config/network/bandfreqlist.xml` 可用。网络状态组合读取返回 ok，LTE/NR
+支持频段列表各 13 项；此时 WLAN host-list 为空，空列表不表示接口不支持。
+
+短信按现有 Huawei POST 查询协议复用项目实现，交叉核对
+[Salamek Sms.py](https://github.com/Salamek/huawei-lte-api/blob/master/huawei_lte_api/api/Sms.py)
+的字段顺序。该项目 LGPL-3.0，已有维护记录，Python 依赖不适合 Surge；
+只核对协议，不复制实现、不增加依赖，不以公开项目代替本机验证。
+短信列表不是 GET：E6888 接受当前会话的监控 GET，但列表 POST 使用旧令牌会
+返回 125003；查询前获取 `/api/webserver/token` 并去掉前 32 字符后实机成功。
+收件箱读取 1 条，发件箱为空，查询前后 LocalUnread 保持相同。
+验证只输出状态、条数和字段名，没有保存真实短信正文、号码或凭据。
+
+页面加入短信入口、20 条分页、完整详情和前台每 10 秒刷新；查看 E6888
+详情不会提交 set-read。短信仅在页面内存展示，设备本身负责接收短信；
+网页关闭期间不承诺后台通知。概览加入只读 WLAN 终端列表，参数页加入网络配置。
+Bridge 的这些查询走已经发现并再次确认型号的管理地址，避免默认路由
+192.168.9.1 与设备管理地址 192.168.8.1 混淆。
+
+E6888 控制路由只开放 sms.list、clients.list、network.get；发送、删除、标记
+已读、改网络、锁频、断网、重启均在登录及写入之前拒绝，页面隐藏相应按钮。
+没有对用户设备试发短信、删消息或改变网络。H168 原控制流程保持原有行为。
+
 ## 公开实现评估
 
 先搜索 GitHub、相关公开客户端和 Brovi 厂商资料，再核对当前设备网页自身的协议。

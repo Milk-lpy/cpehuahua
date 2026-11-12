@@ -355,6 +355,8 @@ input:disabled, select:disabled, textarea:disabled { -webkit-text-fill-color: #a
 .event-item::after { background: #354052; }.event-item__title .event-group { background: rgba(123, 137, 159, .14); }.event-transition { color: #adb7c5; }.event-context b { color: #dce3ec; }.outage-card { background: rgba(135, 29, 46, .32); color: #ff8190; }
 .confirm-dialog { background: #1a2331; border: 1px solid var(--line); color: var(--ink); }
 .confirm-dialog::backdrop { background: rgba(3, 7, 13, .72); }
+.confirm-dialog { max-height: calc(100dvh - 3rem); overflow-y: auto; }
+.confirm-dialog p { white-space: pre-wrap; }
 
 .bottom-nav {
   background: rgba(24, 32, 45, .92);

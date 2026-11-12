@@ -342,7 +342,7 @@ function CellSection({ title, eyebrow, cells, serving = false }: { title: string
   );
 }
 
-export function MessagesPage({ client, summary }: { client: H168ControlClient; summary: SmsSummary }) {
+export function MessagesPage({ client, summary, readOnly = false }: { client: H168ControlClient; summary: SmsSummary; readOnly?: boolean }) {
   const [box, setBox] = useState<1 | 2>(1);
   const [messages, setMessages] = useState<SmsMessage[]>([]);
   const [total, setTotal] = useState(0);
@@ -353,25 +353,42 @@ export function MessagesPage({ client, summary }: { client: H168ControlClient; s
   const [content, setContent] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sendConfirm, setSendConfirm] = useState(false);
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<SmsMessage | null>(null);
+  const loading = useRef(false);
+  const generation = useRef(0);
 
-  async function load(nextBox = box) {
+  async function load(nextBox = box, nextPage = page) {
+    loading.current = true;
+    const requestGeneration = ++generation.current;
     setBusy(true);
     setError(null);
     try {
-      const result = await client.execute<{ messages: SmsMessage[]; count: number }>("sms.list", { box: nextBox, page: 1, count: 50 });
+      const result = await client.execute<{ messages: SmsMessage[]; count: number }>("sms.list", { box: nextBox, page: nextPage, count: 20 });
+      if (generation.current !== requestGeneration) return;
       setMessages(result.data.messages);
       setTotal(result.data.count);
     } catch (cause) {
-      setError(errorMessage(cause, "短信读取失败"));
+      if (generation.current === requestGeneration) setError(errorMessage(cause, "短信读取失败"));
     } finally {
-      setBusy(false);
+      if (generation.current === requestGeneration) {
+        loading.current = false;
+        setBusy(false);
+      }
     }
   }
 
-  useEffect(() => { void load(box); }, [client, box]);
+  useEffect(() => {
+    void load(box, page);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && !loading.current) void load(box, page);
+    }, 10_000);
+    return () => { window.clearInterval(timer); generation.current += 1; };
+  }, [client, box, page]);
 
   async function markRead(message: SmsMessage) {
-    if (!message.unread) return;
+    setSelected(message);
+    if (readOnly || !message.unread) return;
     try { await client.execute("sms.read", { index: message.index }); await load(); }
     catch (cause) { setError(errorMessage(cause, "标记已读失败")); }
   }
@@ -407,21 +424,49 @@ export function MessagesPage({ client, summary }: { client: H168ControlClient; s
   return (
     <>
       <section className="soft-panel sms-summary-panel"><div className="message-grid"><span><b>{summary.inbox ?? "—"}</b><small>收件箱</small></span><span><b>{summary.outbox ?? "—"}</b><small>发件箱</small></span><span><b>{summary.unread ?? "—"}</b><small>未读</small></span><span><b>{remaining ?? "—"}</b><small>剩余容量</small></span></div></section>
-      <section className="soft-panel compose-panel">
+      {!readOnly && <section className="soft-panel compose-panel">
         <button className="accordion-heading" type="button" aria-expanded={composeOpen} onClick={() => setComposeOpen((value) => !value)}><strong>发送短信</strong><span>{composeOpen ? "收起" : "展开"}⌄</span></button>
         {composeOpen && <div className="accordion-body"><label className="input-label" htmlFor="sms-phone">收件号码</label><input id="sms-phone" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="手机号" /><label className="input-label" htmlFor="sms-content">短信内容</label><textarea id="sms-content" value={content} maxLength={500} onChange={(event) => setContent(event.target.value)} placeholder="输入短信内容" /><div className="compose-footer"><small>{Array.from(content).length}/500</small><button className="primary-button" type="button" disabled={busy || !/^\+?[0-9]{3,20}$/.test(phone.trim()) || !content.trim()} onClick={() => setSendConfirm(true)}>发送</button></div></div>}
-      </section>
+      </section>}
       <section className="soft-panel">
         <div className="section-heading"><div><p className="eyebrow">Mailbox</p><h2>短信列表 <span className="inline-count">{total}</span></h2></div><button className="soft-button" type="button" disabled={busy} onClick={() => void load()}>刷新</button></div>
-        <div className="segmented"><button type="button" className={box === 1 ? "is-active" : ""} onClick={() => setBox(1)}>收件箱</button><button type="button" className={box === 2 ? "is-active" : ""} onClick={() => setBox(2)}>发件箱</button></div>
-        {busy && messages.length === 0 ? <p className="loading-line">正在读取设备短信…</p> : messages.length === 0 ? <p className="loading-line">当前邮箱为空</p> : <div className="sms-list">{messages.map((message) => <article key={message.index} className={message.unread ? "is-unread" : ""}><button className="sms-message-button" type="button" onClick={() => void markRead(message)}><span><strong>{message.phone ?? "未知号码"}</strong><time>{message.date ?? "—"}</time></span><p>{message.content ?? "（空短信）"}</p></button><button className="sms-delete-button" type="button" aria-label="删除这条短信" onClick={() => setDeleteId(message.index)}>删除</button></article>)}</div>}
-        <p className="loaded-count">已显示 {messages.length}/{total || messages.length} 条 · 加载完成</p>
+        <div className="segmented"><button type="button" disabled={busy} className={box === 1 ? "is-active" : ""} onClick={() => { setBox(1); setPage(1); }}>收件箱</button><button type="button" disabled={busy} className={box === 2 ? "is-active" : ""} onClick={() => { setBox(2); setPage(1); }}>发件箱</button></div>
+        {busy && messages.length === 0 ? <p className="loading-line">正在读取设备短信…</p> : messages.length === 0 ? <p className="loading-line">当前邮箱为空</p> : <div className="sms-list">{messages.map((message) => <article key={message.index} className={message.unread ? "is-unread" : ""}><button className="sms-message-button" type="button" onClick={() => void markRead(message)}><span><strong>{message.phone ?? "未知号码"}</strong><time>{message.date ?? "—"}</time></span><p>{message.content ?? "（空短信）"}</p></button>{!readOnly && <button className="sms-delete-button" type="button" aria-label="删除这条短信" onClick={() => setDeleteId(message.index)}>删除</button>}</article>)}</div>}
+        <div className="compact-actions"><button type="button" disabled={busy || page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><span>第 {page} 页 · 本页 {messages.length} 条</span><button type="button" disabled={busy || messages.length < 20} onClick={() => setPage((value) => value + 1)}>下一页</button></div>
+        <p className="loaded-count">页面打开时每 10 秒自动刷新{readOnly ? " · 查看详情保留设备未读状态" : ""}</p>
         <ErrorText value={error} />
       </section>
+      <ConfirmDialog open={selected !== null} title={selected?.phone ?? "短信详情"} detail={`${selected?.date ?? ""}\n\n${selected?.content ?? "（空短信）"}`} confirmLabel="关闭" onCancel={() => setSelected(null)} onConfirm={() => setSelected(null)} />
       <ConfirmDialog open={sendConfirm} title="确认发送短信？" detail={`将向 ${phone} 发送：${content}`} confirmLabel="确认发送" onCancel={() => setSendConfirm(false)} onConfirm={() => void send()} />
       <ConfirmDialog open={deleteId !== null} title="删除这条短信？" detail="删除后无法在设备中恢复。" confirmLabel="确认删除" danger onCancel={() => setDeleteId(null)} onConfirm={() => void remove()} />
     </>
   );
+}
+
+export function NetworkStatusPanel({ client }: { client: H168ControlClient }) {
+  const [state, setState] = useState<NetworkControlState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try { setState((await client.execute<NetworkControlState>("network.get")).data); }
+    catch (cause) { setError(errorMessage(cause, "网络配置读取失败")); }
+    finally { setBusy(false); }
+  }
+  useEffect(() => { void load(); }, [client]);
+  const mode = state?.networkMode;
+  return <section className="soft-panel"><div className="section-heading"><h2>网络配置</h2><button className="soft-button" type="button" disabled={busy} onClick={() => void load()}>刷新</button></div>
+    {state && <dl className="detail-list"><div><dt>移动数据</dt><dd>{state.mobileData === null ? "未返回" : state.mobileData ? "开启" : "关闭"}</dd></div>
+      <div><dt>首选网络</dt><dd>{mode === "00" ? "自动" : mode === "08" ? "5G" : mode === "03" ? "4G" : mode ?? "未返回"}</dd></div>
+      <div><dt>5G 配置原始值</dt><dd>{state.networkOption ?? "未返回"}</dd></div>
+      <div><dt>LTE Band 掩码</dt><dd>{state.lteBand ?? "未返回"}</dd></div>
+      <div><dt>LTE 锁频状态</dt><dd>{state.lteLockMode === "0" ? "自动" : state.lteLockMode ?? "未返回"}</dd></div>
+      <div><dt>NR 锁频状态</dt><dd>{state.nrLockMode === "0" ? "自动" : state.nrLockMode ?? "未返回"}</dd></div>
+      <div><dt>LTE 支持频段</dt><dd>{state.supportedLteBands.map((band) => `B${band}`).join(" / ") || "未返回"}</dd></div>
+      <div><dt>NR 支持频段</dt><dd>{state.supportedNrBands.map((band) => `N${band}`).join(" / ") || "未返回"}</dd></div></dl>}
+    {busy && !state && <p className="loading-line">正在读取网络配置…</p>}<ErrorText value={error} />
+  </section>;
 }
 
 function AliasDialog({ client: target, open, initialValue, onCancel, onSave }: { client: ManagedClient | null; open: boolean; initialValue: string; onCancel: () => void; onSave: (value: string) => void }) {
@@ -456,7 +501,7 @@ function duration(seconds: number | null): string {
   return `${hours}时${minutes}分`;
 }
 
-export function ManagedClients({ client, title = "设备列表" }: { client: H168ControlClient; title?: string }) {
+export function ManagedClients({ client, title = "设备列表", readOnly = false }: { client: H168ControlClient; title?: string; readOnly?: boolean }) {
   const [clients, setClients] = useState<ManagedClient[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -519,10 +564,10 @@ export function ManagedClients({ client, title = "设备列表" }: { client: H16
         <div className="section-heading"><div><p className="eyebrow">Connected devices</p><h2>{title} <span className="inline-count">{clients.length}</span></h2></div><div className="compact-actions"><button className={filter === "all" ? "is-active" : ""} type="button" onClick={() => setFilter("all")}>全部</button><button className={filter === "online" ? "is-active" : ""} type="button" onClick={() => setFilter("online")}>在线</button><button type="button" disabled={busy} onClick={() => void load()}>刷新</button></div></div>
         <div className="managed-clients">{rows.map((item, index) => {
           const totalBytes = item.totalDownloadBytes === null && item.totalUploadBytes === null ? null : (item.totalDownloadBytes ?? 0) + (item.totalUploadBytes ?? 0);
-          return <article key={item.macAddress}><div className="client-icon">{item.manufacturer === "Apple" ? "●" : "◆"}</div><div className="client-main"><h3>{aliasFor(item) ?? `终端 ${index + 1}`} <button type="button" onClick={() => setAliasTarget(item)}>重命名</button></h3><p>{item.manufacturer ?? "未知"} · {item.deviceType ?? "设备类型未知"} · {item.frequency ?? "频段未知"} · {item.ssid ?? "SSID 未返回"}</p><small>{item.ipAddress ?? "IP 未返回"}　在线 {duration(item.associatedSeconds)}</small></div><div className="client-telemetry"><span><small>累计接入流量</small><b>{formatBytes(totalBytes)}</b></span><span><small>Wi-Fi 连接速率</small><b>{item.linkRateMbps === null ? "未返回" : `${item.linkRateMbps}Mbps`}</b></span></div><Toggle checked={!item.blocked} disabled={!item.canControl || busy} label={item.blocked ? "恢复终端联网" : "让终端断网"} onChange={() => setBlock(item)} /></article>;
+          return <article key={item.macAddress}><div className="client-icon">{item.manufacturer === "Apple" ? "●" : "◆"}</div><div className="client-main"><h3>{aliasFor(item) ?? `终端 ${index + 1}`} <button type="button" onClick={() => setAliasTarget(item)}>重命名</button></h3><p>{item.manufacturer ?? "未知"} · {item.deviceType ?? "设备类型未知"} · {item.frequency ?? "频段未知"} · {item.ssid ?? "SSID 未返回"}</p><small>{item.ipAddress ?? "IP 未返回"}　在线 {duration(item.associatedSeconds)}</small></div><div className="client-telemetry"><span><small>累计接入流量</small><b>{formatBytes(totalBytes)}</b></span><span><small>Wi-Fi 连接速率</small><b>{item.linkRateMbps === null ? "未返回" : `${item.linkRateMbps}Mbps`}</b></span></div>{!readOnly && <Toggle checked={!item.blocked} disabled={!item.canControl || busy} label={item.blocked ? "恢复终端联网" : "让终端断网"} onChange={() => setBlock(item)} />}</article>;
         })}</div>
         {!busy && rows.length === 0 && <p className="loading-line">当前筛选下没有 WLAN 终端</p>}
-        <p className="panel-note">断网操作会按终端所在 SSID 修改 H168 黑名单并回读确认；请勿关闭当前用于管理的手机。</p>
+        <p className="panel-note">{readOnly ? "显示设备当前返回的 WLAN 终端，别名保存在当前浏览器。" : "断网操作会按终端所在 SSID 修改 H168 黑名单并回读确认；请勿关闭当前用于管理的手机。"}</p>
         <ErrorText value={error} />
       </section>
       <ConfirmDialog open={block !== null} title={block?.blocked ? "恢复这个终端？" : "让这个终端断网？"} detail={block?.blocked ? `${aliasFor(block) ?? "该终端"} 将从 Wi-Fi 黑名单移除。` : `${block ? aliasFor(block) : "该终端"} 将加入对应 Wi-Fi 黑名单。请确认它不是当前管理设备。`} confirmLabel={block?.blocked ? "确认恢复" : "确认断网"} danger={!block?.blocked} onCancel={() => setBlock(null)} onConfirm={() => void toggleClient()} />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { distinctServingCells, type AdapterId, type CpeCell, type CpeEvent, type CpeSnapshot } from "@cpehuahua/core";
 import { BottomNav, type AppView } from "../ui/BottomNav";
-import { BandLockPage, ConfirmDialog, ControlPage, ManagedClients, MessagesPage, SettingsPage } from "../control/ControlPages";
+import { BandLockPage, ConfirmDialog, ControlPage, ManagedClients, MessagesPage, NetworkStatusPanel, SettingsPage } from "../control/ControlPages";
 import { H168ControlClient } from "../control/client";
 import { loadUiPreferences, saveUiPreferences, type UiPreferences } from "../live/ui-preferences";
 import type { ColorTheme } from "../live/theme";
@@ -187,7 +187,7 @@ function Overview({ snapshot, history, events, networkProbeConfigured, onNavigat
     {snapshot.device.model === "E6888-982" && <section className="soft-panel"><SectionTitle eyebrow="Mobile WiFi" title="设备状态" /><DetailList items={[["电量", snapshot.device.batteryPercent ?? null, "%"], ["USB 连接", snapshot.device.usbConnected == null ? null : snapshot.device.usbConnected ? "已连接" : "未连接"]]} /></section>}
     <section className="soft-panel carrier-panel"><SectionTitle eyebrow="信号详情" title="服务载波" badge={servingCells.length} /><div className="carrier-list">{pcc ? <CarrierCard cell={pcc} role="PCC" /> : <Empty text="当前没有可用的主载波数据。" />}{secondaryCells.map((cell, index) => <CarrierCard key={`scc-${cell.arfcn ?? index}-${cell.pci ?? index}`} cell={cell} role="SCC" />)}</div></section>
     <TrafficPanel snapshot={snapshot} history={history} client={controlClient} readOnly={readOnly} />
-    {!readOnly && <ManagedClients client={controlClient} />}
+    <ManagedClients client={controlClient} readOnly={readOnly} />
     <section className="soft-panel telemetry-panel"><SectionTitle eyebrow="实时曲线（最近采样）" title="" /><div className="metric-tabs">{DASHBOARD_METRICS.slice(0, 4).map((item) => <button key={item.id} type="button" className={metric === item.id ? "is-active" : ""} onClick={() => setMetric(item.id)}>{item.label}</button>)}</div><LineChart history={history} metric={metric} /></section>
     <section className="soft-panel log-preview-panel"><div className="section-heading"><div><p className="eyebrow">本地实时记录</p><h2>设备日志</h2></div><div className="section-heading__actions"><span className="count-badge">{events.length}</span><button className="soft-button" type="button" onClick={() => onNavigate("logs")}>全部日志</button></div></div>{events.length === 0 ? <Empty text="保持实时监控，信号和小区变化会记录在这里。" /> : <EventList events={events.slice(-3)} />}{!networkProbeConfigured && <p className="panel-note">Internet 用户路径探测尚未配置，状态保持未验证。</p>}</section>
   </>;
@@ -317,7 +317,8 @@ export function DashboardPage(props: DashboardPageProps) {
     {activeView === "control" && !readOnly && <ControlPage client={props.controlClient} />}
     {activeView === "cells" && !readOnly && <BandLockPage client={props.controlClient} snapshot={snapshot} />}
     {activeView === "parameters" && <ParametersPage snapshot={snapshot} events={props.events} cached={cached} onClearCache={props.onClearCache} onNavigate={onNavigate} />}
-    {activeView === "messages" && !readOnly && <MessagesPage client={props.controlClient} summary={snapshot.messaging} />}
+    {activeView === "messages" && <MessagesPage client={props.controlClient} summary={snapshot.messaging} readOnly={readOnly} />}
+    {activeView === "parameters" && readOnly && <NetworkStatusPanel client={props.controlClient} />}
     {activeView === "settings" && <SettingsPage client={props.controlClient} rememberPassword={props.rememberPassword} autoLogin={props.autoLogin} theme={props.theme} onRememberPasswordChange={props.onRememberPasswordChange} onAutoLoginChange={props.onAutoLoginChange} onThemeChange={props.onThemeChange} onLogout={props.onLogout} readOnly={readOnly} />}
     <BottomNav active={activeView} onNavigate={onNavigate} adapterId={props.adapterId} />
   </main>;

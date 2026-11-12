@@ -11,7 +11,7 @@
  */
 
 const STORE_KEY = "cpehuahua.bridge.v1";
-const BRIDGE_VERSION = "20261112-e6888-r4";
+const BRIDGE_VERSION = "20261112-e6888-r5";
 const TARGET_STORE_KEY = "cpehuahua.read-target.v1";
 const DEVICE_TIMEOUT_SECONDS = 8;
 // Keep this list narrow: only the hosted PWA and local development origin may
@@ -943,6 +943,7 @@ async function authenticatedPost(context, path, body, options = {}) {
   let parsed = parseXml(response.body);
   if (isSessionInvalid(response, parsed, path, context.passwordProvided) && !reauthenticationAttempted) {
     await login(context, true);
+    if (context.adapterId === "e6888") await acquireToken(context);
     response = await contextRequest(context, "POST", path, authHeaders(context, context.csrfToken), body);
     parsed = parseXml(response.body);
   }
@@ -1711,8 +1712,15 @@ function requestXml(fields) {
     + "</request>";
 }
 
-async function verifyControlTarget(context) {
+async function verifyControlTarget(context, action) {
   const response = await publicGet(context, "/api/device/basic_information");
+  if (isSuccessful(response) && looksLikeE6888(response.body)) {
+    context.adapterId = "e6888";
+    if (!["sms.list", "clients.list", "network.get"].includes(action)) {
+      throw new Error("E6888 此操作尚未完成写入验证，暂未开放");
+    }
+    return;
+  }
   if (!isSuccessful(response) || !looksLikeH168(response.body)) {
     throw new Error("默认网关未确认是 H168-383，已拒绝控制操作");
   }
@@ -1724,6 +1732,12 @@ async function executeControl(context, action, payload) {
     const page = Math.max(1, Math.min(50, Number(payload.page) || 1));
     const count = Math.max(1, Math.min(50, Number(payload.count) || 20));
     const body = requestXml({ PageIndex: page, ReadCount: count, BoxType: box, SortType: 0, Ascending: 0, UnreadPreferred: 0 });
+    // E6888 accepts protected GETs with the session token, but SMS queries
+    // require a fresh POST token. Acquiring it here avoids a redundant login.
+    if (context.adapterId === "e6888") {
+      await login(context, false);
+      await acquireToken(context);
+    }
     const response = await authenticatedPost(context, "/api/sms/sms-list", body);
     return { ...responseStatus(response), data: { box, page, count: xmlNumber(response.body, ["Count"]) ?? 0, messages: smsMessages(response.body) } };
   }
@@ -1893,6 +1907,9 @@ async function executeControl(context, action, payload) {
   }
   if (action === "clients.list") {
     const response = await authenticatedGet(context, "/api/wlan/host-list");
+    if (context.adapterId === "e6888") {
+      return { ...responseStatus(response), data: { clients: wlanHosts(response.body).map((host) => ({ ...host, ssidIndex: null, blocked: null, canControl: false })) } };
+    }
     const basic = await authenticatedGet(context, "/api/wlan/multi-basic-settings");
     const filters = await authenticatedGet(context, "/api/wlan/multi-macfilter-settings-ex");
     const state = responseStatus(response);
@@ -1990,14 +2007,15 @@ async function runControl() {
     });
     return;
   }
-  const gateway = gatewayAddress();
+  const target = await discoverReadTarget();
+  const gateway = target?.gateway;
   if (!gateway) {
     bridgeResponse(503, { error: "Surge 未发现 IPv4 默认网关，请先连接设备 Wi-Fi。" });
     return;
   }
   const context = contextFromRequest();
-  context.baseUrl = "http://" + gateway;
-  await verifyControlTarget(context);
+  bindReadTarget(context, gateway);
+  await verifyControlTarget(context, action);
   const result = await executeControl(context, action, payload);
   if (context.rememberSession || context.rememberPassword) saveStoredState(context);
   bridgeResponse(200, { schemaVersion: 1, gateway, action, ...result });

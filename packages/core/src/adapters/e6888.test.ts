@@ -23,6 +23,14 @@ function snapshot(status = "<BatteryPercent>100</BatteryPercent><usbup>1</usbup>
 }
 
 describe("live E6888 firmware mapping", () => {
+  it("polls and normalizes verified SMS counters without storing messages", () => {
+    const s = adapter.normalize({timestamp: "2026-11-12T12:00:00Z", source: "live", gateway: "192.168.8.1", endpointResults: {
+      "sms-count": result("sms-count", "<response><LocalInbox>21</LocalInbox><LocalUnread>2</LocalUnread><LocalOutbox>3</LocalOutbox><LocalMax>500</LocalMax></response>"),
+    }});
+    expect(s.messaging).toMatchObject({inbox:21,unread:2,outbox:3,capacity:500});
+    expect(s.capabilities.sms).toBe("observed");
+    expect(adapter.probeEndpoints.find(e => e.id === 'sms-count')?.intervalMs).toBe(10_000);
+  });
   it("parses separate DL/UL ARFCN and band text without inventing an LTE SCC or RSSI", () => {
     const s = snapshot();
     expect(s.radio.arfcn).toBe(175380);
