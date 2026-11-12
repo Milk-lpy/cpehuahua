@@ -29,12 +29,12 @@ const ITEMS: ReadonlyArray<{ id: AppView; label: string }> = [
 ];
 
 export function BottomNav({ active, onNavigate, adapterId = "h168" }: { active: AppView; onNavigate: (view: AppView) => void; adapterId?: AdapterId }) {
-  const activeItem = active === "logs" ? "parameters" : active;
+  const activeItem = active === "logs" && adapterId !== "e6888" ? "parameters" : active;
   const items = adapterId === "e6888"
-    ? ITEMS.filter((item) => !["control", "cells", "messages"].includes(item.id))
+    ? [ITEMS[0]!, ITEMS[3]!, { id: "logs" as const, label: "设备日志" }, ITEMS[5]!]
     : ITEMS;
   return (
-    <nav className="bottom-nav" aria-label="主要功能">
+    <nav className="bottom-nav" aria-label="主要功能" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
       {items.map((item) => (
         <button
           key={item.id}

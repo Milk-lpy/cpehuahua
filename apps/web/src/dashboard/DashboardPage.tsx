@@ -285,7 +285,7 @@ function DeviceLogsPage({ events, history, snapshot, networkProbeConfigured }: {
       {!cellularOutage && !internetOutage && <p className="panel-note">当前没有从事件序列确认的持续中断。</p>}
       {!networkProbeConfigured && <p className="panel-note">Internet 用户路径探测尚未配置，因此不会推断 Internet 断开或恢复；蜂窝设备日志不受影响。</p>}
     </section>
-    <section className="soft-panel timeline-panel"><SectionTitle eyebrow="采样证据时间线" title="全部记录" badge={events.length} />{events.length ? <EventList events={events} detailed /> : <Empty text="暂无设备日志。保持实时监控后，已确认的状态变化会显示在这里。" />}</section>
+    <section className="soft-panel timeline-panel"><SectionTitle eyebrow="采样证据时间线" title="全部记录" badge={events.length} />{events.length ? <EventList events={events} detailed /> : <Empty text="当前没有已确认的状态变化。开启实时监控后，连接、小区或频段变化会按时间记录。" />}</section>
   </>;
 }
 
