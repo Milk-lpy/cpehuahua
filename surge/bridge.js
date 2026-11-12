@@ -11,7 +11,7 @@
  */
 
 const STORE_KEY = "cpehuahua.bridge.v1";
-const BRIDGE_VERSION = "20261112-e6888-r3";
+const BRIDGE_VERSION = "20261112-e6888-r4";
 const TARGET_STORE_KEY = "cpehuahua.read-target.v1";
 const DEVICE_TIMEOUT_SECONDS = 8;
 // Keep this list narrow: only the hosted PWA and local development origin may
@@ -356,6 +356,7 @@ function saveStoredState(context) {
     state.cookies = context.cookies;
     state.csrfToken = context.csrfToken;
     state.gateway = context.baseUrl?.replace(/^http:\/\//, "") || null;
+    state.adapterId = context.adapterId;
   }
   if (context.authenticated && context.rememberPassword && context.password) {
     state.password = context.password;
@@ -740,6 +741,7 @@ function contextFromRequest() {
   return {
     baseUrl: null,
     sessionGateway: typeof stored.gateway === "string" ? stored.gateway : null,
+    adapterId: stored.adapterId === "e6888" || stored.adapterId === "h168" ? stored.adapterId : null,
     cookies,
     csrfToken,
     password: payloadPassword || (rememberPassword ? storedPassword : ""),
@@ -813,13 +815,17 @@ async function login(context, force) {
     context.csrfToken = null;
     context.authenticated = false;
   }
-  if (context.authenticated && context.csrfToken && cookieHeader(context.cookies)) return;
+  if (context.authenticated && context.csrfToken && cookieHeader(context.cookies)
+    && (context.adapterId === "e6888" || context.adapterId === "h168")) return;
 
   const identity = await contextRequest(context, "GET", "/api/device/basic_information");
   if (!isSuccessful(identity) || (!looksLikeE6888(identity.body) && !looksLikeH168(identity.body))) {
     throw new Error("登录前无法确认设备型号，请重新连接设备");
   }
   context.adapterId = looksLikeE6888(identity.body) ? "e6888" : "h168";
+  // Migrate older saved sessions by identifying their profile, without forcing
+  // a new login or dropping an otherwise valid session.
+  if (context.authenticated && context.csrfToken && cookieHeader(context.cookies)) return;
   const loginFlag = context.adapterId === "e6888" ? "" : "<loginflag>2</loginflag>";
 
   let content = await contextRequest(context, "GET", context.adapterId === "e6888" ? "/html/index.html" : "/html/content.html");
@@ -1385,7 +1391,21 @@ async function collectEndpoint(context, endpointDefinition) {
     const response = endpointDefinition.requiresAuth
       ? await authenticatedGet(context, endpointDefinition.path)
       : await publicGet(context, endpointDefinition.path);
-    return resultFor(endpointDefinition, response, requestedAt, started);
+    const result = resultFor(endpointDefinition, response, requestedAt, started);
+    if (result.huaweiError?.code === 100003 && endpointDefinition.id === "device-signal") {
+      let loginState = null;
+      try {
+        const state = await contextRequest(context, "GET", "/api/user/state-login", authHeaders(context, context.csrfToken));
+        loginState = xmlText(state.body, ["State"]);
+      } catch { /* Diagnostics must not replace the original device error. */ }
+      result.diagnostics = {
+        gateway: context.baseUrl.replace(/^http:\/\//, ""),
+        bridgeVersion: BRIDGE_VERSION,
+        profile: context.adapterId || null,
+        loginState,
+      };
+    }
+    return result;
   } catch (error) {
     return transportResult(
       endpointDefinition,
@@ -1419,6 +1439,7 @@ function bindReadTarget(context, gateway) {
     context.cookies = {};
     context.csrfToken = null;
     context.authenticated = false;
+    context.adapterId = null;
   }
   context.baseUrl = "http://" + gateway;
 }

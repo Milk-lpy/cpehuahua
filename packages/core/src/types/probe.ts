@@ -29,6 +29,12 @@ export type ProbeResultStatus =
   | "not-run";
 
 export interface EndpointProbeResult {
+  diagnostics?: {
+    gateway: string;
+    bridgeVersion: string;
+    profile: string | null;
+    loginState: string | null;
+  };
   endpoint: ProbeEndpoint;
   status: ProbeResultStatus;
   requestedAt: string;

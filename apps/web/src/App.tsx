@@ -60,7 +60,11 @@ function liveEndpointError(result: EndpointProbeResult): string {
       : `Huawei error ${result.huaweiError.code}`)
     ?? (result.httpStatus === null ? null : `HTTP ${result.httpStatus}`)
     ?? "未返回可用数据";
-  return `${result.endpoint.label}读取失败：${detail}`;
+  const diagnostic = result.diagnostics;
+  const context = diagnostic
+    ? `（网关 ${diagnostic.gateway}；Bridge ${diagnostic.bridgeVersion}；配置 ${diagnostic.profile ?? "未知"}；登录状态 ${diagnostic.loginState ?? "未知"}）`
+    : "";
+  return `${result.endpoint.label}读取失败：${detail}${context}`;
 }
 
 function LoadingScreen({ theme, onThemeChange }: { theme: ColorTheme; onThemeChange: (theme: ColorTheme) => void }) {

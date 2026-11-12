@@ -7,6 +7,49 @@ const bridge = readFileSync(new URL("../../../../surge/bridge.js", import.meta.u
 const functions = bridge.slice(0, bridge.indexOf("const endpointId = endpointIdFromRequest();"));
 
 describe("Surge local-device routing", () => {
+  it("identifies an older saved session before polling without requiring the password again", async () => {
+    const storage = JSON.stringify({ gateway: "192.168.8.1", cookies: { SessionID: "fixture" }, csrfToken: "fixture-token", rememberSession: true });
+    const paths: string[] = [];
+    const response = await runInNewContext(functions + `
+      parseXml = testParse;
+      const next = contextFromRequest(); bindReadTarget(next, '192.168.8.1');
+      authenticatedGet(next, '/api/device/signal');
+    `, {
+      testParse: parseHuaweiXml, $request: { method: "GET", headers: {} },
+      $persistentStore: { read: () => storage },
+      $httpClient: { get: (options: { url: string; headers: Record<string, string> }, callback: (error: null, response: object, body: string) => void) => {
+        const path = new URL(options.url).pathname; paths.push(path);
+        if (path === "/api/device/basic_information") callback(null, { status: 200, headers: {} }, "<response><devicename>E6888-982</devicename></response>");
+        else {
+          expect(options.headers["X-Requested-With"]).toBe("XMLHttpRequest");
+          expect(options.headers.Cookie).toBe("SessionID=fixture");
+          callback(null, { status: 200, headers: {} }, "<response><nrrsrp>-104dBm</nrrsrp></response>");
+        }
+      } }, TextDecoder, Uint8Array,
+    });
+    expect(parseHuaweiXml(response.body).error).toBeNull();
+    expect(paths).toEqual(["/api/device/basic_information", "/api/device/signal"]);
+  });
+  it("keeps the E6888 request profile across separate polling requests", async () => {
+    const storage: Record<string, string> = {};
+    const response = await runInNewContext(functions + `
+      parseXml = testParse;
+      saveStoredState({ baseUrl: 'http://192.168.8.1', adapterId: 'e6888', authenticated: true,
+        rememberSession: true, rememberPassword: false, cookies: { SessionID: 'fixture' }, csrfToken: 'fixture-token' });
+      const next = contextFromRequest();
+      bindReadTarget(next, '192.168.8.1');
+      authenticatedGet(next, '/api/device/signal');
+    `, {
+      testParse: parseHuaweiXml,
+      $request: { method: "GET", headers: {} },
+      $persistentStore: { read: (k: string) => storage[k] ?? null, write: (v: string, k: string) => (storage[k] = v, true) },
+      $httpClient: { get: (options: { headers: Record<string, string> }, callback: (error: null, response: object, body: string) => void) => {
+        const browser = options.headers["X-Requested-With"] === "XMLHttpRequest" && options.headers._ResponseSource === "Broswer";
+        callback(null, { status: 200, headers: {} }, browser ? "<response><nrrsrp>-104dBm</nrrsrp></response>" : "<error><code>100003</code></error>");
+      } }, TextDecoder, Uint8Array,
+    });
+    expect(parseHuaweiXml(response.body).error).toBeNull();
+  });
   it("does not carry cookies or tokens from the default gateway to the discovered device", () => {
     const context = { sessionGateway: "192.168.9.1", cookies: { SessionID: "fixture-session" }, csrfToken: "fixture-token", authenticated: true };
     runInNewContext(functions + `\nbindReadTarget(context, '192.168.8.1')`, { context });
